@@ -1,0 +1,284 @@
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib as mpl
+import os
+import glob
+import sys
+import pandas as pd
+# import scipy.integrate as si
+import astropy.units as u
+from astropy import constants as const
+plt.rcParams.update({ 'font.size':13, 'legend.fontsize':11})
+
+T_exp = 3600	# s
+results_dir = f'/scratch/astro/gabriele.columba/results/run_{T_exp}s_2c/'
+# results_dir = '/Users/gcolumba/PostDoc_Mac/PostProc/runs_5Ks/'
+truth_path = './run/simulations/Tungs_truths.dat'
+figs_ext = '.png'
+
+Tung_nofit = [29, 43, 63, 72, 75, 82, 83]
+tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
+
+v_obs = 100 *1e9    # Hz    obs frequency
+pixscale = 9.92e-6      # deg
+sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
+dist = 140 *u.pc  # parsec
+au_to_rad = 1 / dist.to_value(u.au)
+# arcsec_to_au = (dist * u.pc).to_value( u.au) 
+
+
+def gauss_flux_tot( I0, sigma, Rmax):
+	'''
+	Compute the total flux from a gaussian disk with peak brightness I0 integrating radially up to Rmax. 
+	inputs  I0: Jy/sr       sigma, Rmax: rad
+	returns F_v: [Jy]
+	'''
+	return 2*np.pi* I0 * sigma**2 * (1 - np.exp( -0.5 * (Rmax/sigma)**2 ) )
+
+
+def planck_bbody( v, T):
+	'''v frequency in Hz and T temperature in K. Bv in cgs units. '''
+	return 2 * const.h.cgs.value * v**3 / const.c.cgs.value**2 / ( np.exp( const.h.cgs.value * v / (const.k_B.cgs.value * T) ) - 1 )
+
+
+def kappa_empir( v_obs, beta):
+	'''Empirical emission coefficient kappa [cm^2 / g]. v_obs in [Hz]'''
+	kappa = 10 * ( v_obs / 9.857e11 )**beta
+	return kappa
+
+
+def temp_profile_Tung( lum, r):
+	'''Average T(r) profile from Tung24 fit. lum=Lint+Lacc in [Lsun] and r in [au]. '''
+	return lum**0.25 * ( r / 35 )**(-0.52) * 71   # Kelvin
+
+
+def thick_flux( v, d, r_max, l_star):
+	'''
+	Compute theoretical flux in case of fully thick disk (rough integration).
+	v [Hz], d [pc], r_max [rad], l_star [Lsun].
+	returns: F_v in [Jy]
+	'''
+	r_arr = np.linspace( 4e-10, r_max, 1000) * d			# radial integration grid [pc]
+	dr = r_arr[1] - r_arr[0]
+	B_v = planck_bbody( v, T= temp_profile_Tung( lum=l_star, r=r_arr.to_value(u.au) ) )
+	F_v = 1 / d.cgs.value**2 * np.sum( B_v * 2 * np.pi * r_arr.cgs.value * dr.cgs.value )	# [cgs: erg/s/cm2/Hz]
+	return F_v * 1e23		# [Jy]
+
+
+def plot_opacity():
+	# let's take the opacity used by Tung to check the dust mass
+	opac_df = pd.read_table( '/Users/gcolumba/PostDoc_Mac/PostProc/simulations/dustkapscatmat_optool.inp', 
+							skiprows=44, nrows=150, delimiter='\s+', engine='python', header=None, names=['lam', 'kabs', 'ksca', 'g'])
+
+	v_obs = const.c.cgs.value / (opac_df.lam.values *1e-4) 		# Hz
+	k_v_15 = kappa_empir( v_obs, beta=1.5)
+	k_v_1 = kappa_empir( v_obs, beta=1.0)
+
+	fig, ax = plt.subplots()
+	ax.plot( opac_df.lam *1e-3, opac_df.kabs, label='K_abs (opTool)', c='k', ls='--')		# lambda from um to mm
+	ax.plot( opac_df.lam *1e-3, opac_df.ksca, label='K_sca', alpha=0.2)
+	ax.plot( opac_df.lam *1e-3, k_v_15, label=r'k($\beta=1.5$)', c='b', ls='-.')
+	ax.plot( opac_df.lam *1e-3, k_v_1, label=r'k($\beta=1.0$)', c='r')
+	ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
+	ax.set( xscale='log', yscale='log', xlabel='$\lambda$ [mm]', ylabel='$\kappa$ [cm2 / g]', xlim=[1e-4, 20], ylim=[1e-2, 1e5])
+	ax.legend( loc='lower left')
+	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
+	plt.show()
+
+
+def plot_Fv_compare( df):
+
+	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
+	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.57 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23		# [Jy] 
+	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.57 * planck_bbody( v_obs, 
+								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
+
+	ptitle = 'Flux_thickness'
+	fig, ax = plt.subplots( figsize=(8,5), tight_layout=True)
+	ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
+	ax.scatter( x=df.R_obs, y=df.F_obs, marker='o', c='g', label='Observed flux', alpha=0.9 )		# observed fluxes
+	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim2, marker='+', c='gray', label='Thin flux from Msim (T Tung)', alpha=0.8)
+	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='v', c='r', label='Thick flux from Rsim', alpha=0.7)
+	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
+	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	ax.legend()
+	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	plt.show()
+
+
+def plot_mass_compare( df):
+	ptitle = 'Mass_comparison'
+	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
+	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )		# y=x identity
+	ax.scatter( x=df.M_sim/100, y=df.M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
+	ax.set( xlabel= r'$ M_\mathrm{sim} / 100 $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
+	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	plt.show()
+
+
+def plot_radius_compare( df):
+	'''Assuming R_obs is R_90 in au. '''
+	ptitle = 'Radius_comparison'
+	to_as = 1 # np.rad2deg(1) * 3600		# from rad to arcsec
+	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
+	ax.axline( xy1=(10, 10), slope=1, ls='--', c='gray' )		# y=x identity
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs/1.42 *to_as, marker='o', c='b', label='$R_{68%}$', alpha=0.6)
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs *1   *to_as, marker='o', c='g', label='$R_{90%}$', alpha=0.8)		# observed radii
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs*1.14 *to_as, marker='o', c='r', label='$R_{95%}$', alpha=0.6)
+	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log', title=ptitle )
+	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	plt.show()
+
+
+def plot_inc_compare( df):
+	'''Assuming inc in [deg]. '''
+	ptitle = 'Inclination_comparison'
+	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
+	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
+	ax.scatter( x=df.i_sim, y=df.i_obs, marker='o', c='orange', alpha=0.8)
+	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', title=ptitle )
+	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	plt.show()
+
+
+
+
+def produce_truths_df():
+	'''From Tungs data export a dataframe with the simulation truths of my interest. '''
+	import h5py
+	catalog = 'disk_01440_rmax_500_f_2_rho_3.8346e-15_thermal_False.h5'
+	hf = h5py.File( catalog, 'r')
+	disks = {}
+	for k in hf.attrs.keys():	#Extract the disk quantities
+		disks[k] = hf.attrs[k]
+
+	Rsim = []; Msim = []; Lint = []; Lacc = []; dTemp1 = []; dTemp2 = []
+	angs_x = []; angs_y = []; angs_z = []
+	ids = disks['list_of_disks']
+
+	for i_d in ids:
+		directions = disks['disk_'+str(i_d).zfill(5)+'_direction'] 	# coordinates (x, y, z) of the normal vector of the disk
+		radius = disks['disk_'+str(i_d).zfill(5)+'_radius']
+		mass = disks['disk_'+str(i_d).zfill(5)+'_mass']
+		# height = disks['disk_'+str(i_d).zfill(5)+'_H']
+		angs_x.append( np.arccos( directions[0]) *180/np.pi)
+		angs_y.append( np.arccos( directions[1]) *180/np.pi)    
+		angs_z.append( np.arccos( directions[2]) *180/np.pi)    
+		Rsim.append( radius)
+		Msim.append( mass)
+		Lint.append( disks['disk_'+str(i_d).zfill(5)+'_star_lum'] )
+		Lacc.append( disks['disk_'+str(i_d).zfill(5)+'_star_acclum'] )
+		dTemp1.append( disks['disk_'+str(i_d).zfill(5)+'_Temp_mid'] )	# mid, mavg o simple ?
+		dTemp2.append( disks['disk_'+str(i_d).zfill(5)+'_Temp_mavg'] )
+	
+	dfT = pd.DataFrame( np.array([Msim, Rsim, Lint, Lacc, dTemp1, dTemp2, angs_x, angs_y, angs_z]).T, 
+		columns=['M_disk', 'R_disk', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'i_yz', 'i_xz', 'i_xy'], index=ids)
+	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
+
+
+def OLD_produce_truths_df():
+	# tru_df = pd.DataFrame.from_dict( truths_dict, orient='index')
+	TT_sim = np.load( 'disks_Tung.pkl', allow_pickle=True, encoding='bytes')
+	# U_sim = np.load( '../simulations/disks_nmhd.pkl', allow_pickle=True)
+	tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
+
+	# # comparison between Ugo and Tung dicts: they match (quite)
+	# for n in tungslist:		# systems fitted by Tung
+	# 	print( '\n', n)
+	# 	print( ' ugo: \t', U_sim[f'{n}']['mass'][0] )
+	# 	print( 'tung: \t', TT_sim[b'disk_mass'][n-1])
+
+	# 	print( '\n ugo: \t', U_sim[f'{n}']['radius'][0] )
+	# 	print( 'tung: \t', TT_sim[b'disk_radius'][n-1])
+
+	# 	print( '\n ugo: \t', U_sim[f'{n}']['star_acclum'][0] )
+	# 	print( 'tung: \t', TT_sim[b'star_acclum'][n-1])
+
+	# plt.plot( TT_sim[b'star_lum'] , c='b', alpha=0.7)
+	# plt.plot( TT_sim[b'star_acclum'], c='r', alpha=0.7)
+	# plt.plot( TT_sim[b'sink_mass'] , c='y' , alpha=0.7)
+	# plt.yscale( 'log')
+	# plt.show()
+
+	masses = TT_sim[b'disk_mass'][tungslist-1]
+	radii = TT_sim[b'disk_radius'][tungslist-1]
+	L_int = TT_sim[b'star_lum'][tungslist-1]
+	L_acc = TT_sim[b'star_acclum'][tungslist-1]
+	dtemp = TT_sim[b'disk_temp'][tungslist-1]
+
+	dfT = pd.DataFrame( np.array([masses, radii, L_int, L_acc, dtemp]).T, 
+					columns=['M_disk', 'R_disk', 'L_int', 'L_acc', 'T_disk'], index=tungslist+1)
+	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
+
+
+
+
+if __name__=='__main__':
+
+	disklist = sorted( glob.glob( results_dir + 'disk*') )
+	if disklist == []:    
+		print('NO FILES FOUND, check again the folder path!')
+		sys.exit()
+	print( len(disklist), 'files found')
+
+	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ).loc[tungslist]	# load my simulation truths file
+	paramlist = []
+
+	for fpath in disklist:
+		os.chdir( fpath )
+		diskname = fpath.strip( results_dir ).strip('disk')
+		disk_n = int(diskname.strip( '_yzx'))
+		
+		if disk_n in tungslist:
+			try:
+				# read the bestfit params from file for I0 and sma
+				pars = np.loadtxt( 'bestfit_params.txt')	# galario fits I0 in Jy/sr units
+				I0_d = 10**pars[0]                   		# disk peak intensity  [Jy/sr]
+				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma  [arcsec --> rad]
+				i_obs = pars[-4]								# disk inclination [deg]
+
+				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
+				R_90 = R_68 * 1.42                              # 90% radius
+				R_95 = R_68 * 1.62
+				R_obs = R_90     # as Tung ?
+
+				F_v = gauss_flux_tot( I0_d, sma, 300*R_obs)      # observed flux density [Jy]
+				
+				# theoretical fully thick disk flux
+				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
+				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
+
+				k_v = 0.57 # kappa    # cm2 / g
+				T_avg = 122     # K		Tung default: 122 K
+
+				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+
+			except: 
+				print('No bestfit params found for ', diskname)
+				M_obs = R_obs = F_v = F_v_thicc = i_obs = np.nan
+			
+			finally:
+				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
+				epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
+				R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
+				R_obs = (R_obs * dist).to_value( u.au )			# rad to au
+				i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
+				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
+				paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, F_v_thicc, i_obs, i_sim, L_tot] )
+
+	res_df = pd.DataFrame( paramlist, 
+				   columns=['source', 'R_obs', 'R_sim', 'M_obs', 'M_sim', 'epsilon_M', 'F_obs', 'F_thick', 'i_obs', 'i_sim', 'L_tot']
+				   ).set_index('source')
+	
+	os.chdir( results_dir )
+	res_df.to_csv( f'analysis_results-{T_exp}s.txt', sep='\t')#, float_format='%.2e')
+	
+	plot_Fv_compare( res_df )
+	plot_inc_compare( res_df )
+	plot_mass_compare( res_df )
+	plot_radius_compare( res_df )
+

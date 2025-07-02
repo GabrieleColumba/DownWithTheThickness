@@ -1,0 +1,2 @@
+#Epoch     RA          DEC      
+J2000    16h26m28.2s   -24d24m06.12s
