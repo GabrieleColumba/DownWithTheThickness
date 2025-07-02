@@ -20,7 +20,6 @@ from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
-# from skimage.color import label2rgb
 # os.environ["OMP_NUM_THREADS"] = "1"
 
 
@@ -317,34 +316,57 @@ def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_
 	return sampler
 
 
-def mcmc_plots( samp_bkend, labels, burn_in=1000, figures=True, folder='./'):
+
+
+def clip_chains( samples, thresh=5):
+	'''
+	Discard the walkers that are more than thresh sigma away from the median.
+	'''
+	steps_median = np.median( samples, axis=0)		# median of all the steps for each walker
+	param_std = np.std( steps_median, axis=0)		# std of parameter posteriors
+	clip_idx = np.argwhere( (np.abs( steps_median - np.median( steps_median, axis=0) ) > thresh * param_std ).any( axis=1 ) )	# if exceeds thresh in any param
+	if len(clip_idx) > 0:
+		print( f'Clipping {len(clip_idx)} walkers that are more than {thresh} sigma away from the median.')
+		clipped = np.delete( samples, clip_idx, axis=1 )		# remove the chains of the outlying walkers
+		return clipped
+	else:
+		print( 'No walkers to clip.')
+		return samples
+
+
+def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, folder='./'):
 	'''
 	Show the traces of mcmc steps for sampler run and the corner plot.
 	'''
+	try:
+		# print( "Mean acceptance fraction: {0:.3f}".format( np.mean(samp_bkend.acceptance_fraction) ) )
+		tau = samp_bkend.get_autocorr_time( discard=int(burn_in), quiet=True)
+		print( 'autocorr time: \t', tau)
+		new_burn_in = int(2 * np.max(tau))      # discard the burn-in steps based on autocorrelation
+		# thinning = int(0.5 * np.min(tau))
+	except: 
+		print('It was not possible to determine the autocorrelation time tau')
+		pass
+
 	samples = samp_bkend.get_chain()
-	fig, axes = plt.subplots( len(labels), figsize=(8, 8), sharex=True)
-	for i in range( len(labels)):		# chain traces
+	flat_samples = samp_bkend.get_chain( discard=int(burn_in),  flat=True)
+	if walk_clip_thresh != None:
+		samples = clip_chains( samples, thresh=walk_clip_thresh)		# remove outlying walkers
+		flat_samples = samples.reshape( -1, len(labels) )		# discarding the burn-in steps in the first step before chains
+
+	fig, axes = plt.subplots( len(labels), figsize=(8, 8), sharex=True)			# CHAIN traces
+	for i in range( len(labels)):
 		ax = axes[i]
 		ax.plot( samples[:, :, i], "k", alpha=0.3)
 		ax.set_xlim(0, len(samples))
 		ax.set_ylabel( labels[i])
 		ax.yaxis.set_label_coords(-0.1, 0.5)
 	axes[-1].set_xlabel("step number")
-	fig.savefig( folder + 'chains_steps' + fig_ext)
+	fig.savefig( folder + 'chains_steps' + fig_ext, dpi=400)
 	if figures: plt.show()
 	plt.close()
 
-	try:
-		print( "Mean acceptance fraction: {0:.3f}".format( np.mean(samp_bkend.acceptance_fraction) ) )
-		tau = samp_bkend.get_autocorr_time( discard=int(burn_in), quiet=True)
-		print( 'autocorr time: \t', tau)
-	except: pass
-
-	# burn_in = int(2 * np.max(tau))      # discard the burn-in steps based on autocorrelation
-	# thinning = int(0.5 * np.min(tau))
-	flat_samples = samp_bkend.get_chain( discard=int(burn_in),  flat=True)
-
-	cornfig = plt.figure( figsize=(8,8))
+	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
 	fig = corner.corner(
 		flat_samples, labels=labels, quantiles=[0.16, 0.5, 0.84], # title_quantiles=[0.5],
 		show_titles=True, fig=cornfig, 
