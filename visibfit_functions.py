@@ -316,8 +316,6 @@ def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_
 	return sampler
 
 
-
-
 def clip_chains( samples, thresh=5):
 	'''
 	Discard the walkers that are more than thresh sigma away from the median.
@@ -806,19 +804,33 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, ext
 	return bestmod_image, vis_model
 
 
-def bestfit_plots( diskname, galargs, two_comp, extra_sources):
-	'''Produce UVplots for best solutions and a skymodel of bestfit'''
-	# mpl.use('macosx')
-	bestfit = np.loadtxt( 'bestfit_params.txt' )
-	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs=galargs, two_comp=two_comp, extra_sources=extra_sources)		# make the UV plots and save the best model image
+def bestfit_plots( diskname, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None):
+	'''
+	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
+	'''
+	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
+	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
+	labs_mc = labels_2c if two_comp else labels_gauss
+
+	if sampler is None:
+		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )
+	nsteps = sampler.get_chain().shape[0]
+	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in= nsteps//3, walk_clip_thresh=5, figures=False )
+	np.savetxt( f'bestfit_params.txt', bestfit )
+
+	if galargs is None:
+		galargs = get_galargs()
+	if extra_sources is None:
+		extra_sources = copy_extra_sources( diskname ) if monosource==False else (0,0)
+	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources)		# make the UV plots and save the best model image
 	residuals_vis_plot( diskname, mod_vis )
 
 	# # best model visual check
-	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-10, a_max=None)		# [:, ::-1]
+	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-8, a_max=None)		# [:, ::-1]
 	plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')	# slicing to have it mirrored as casa
 	plt.title('galario best model')
 	#plt.show()
-	plt.savefig( f'galario_sky-model_bestfit.png')
+	plt.savefig( f'galario_sky-model_bestfit' + fig_ext)
 	plt.close()
 	# plot_img = np.clip( model_image, a_min= 1e-10, a_max=None)		# [:, ::-1]
 	# plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
@@ -826,7 +838,7 @@ def bestfit_plots( diskname, galargs, two_comp, extra_sources):
 	# #plt.show()
 	# plt.savefig( f'galario_sky-model_bestfit__whole.png')
 	plt.close()
-	return
+	return print( '\n Best-fit plots and images saved.\n')
 
 
 
@@ -876,41 +888,24 @@ def mcmc_regress( diskname, nsteps=200, two_components=True, Ncpu=9, savedir='',
 	# initial guess for the parameters
 	p0_2 = np.array([12, 7., 0.2, 2.1, 3, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, p_idx, (inc, PA, dRA, dDec)
 	p0_gauss = np.array([12, 5., 0.2, 80., 45., 0., 0.])		# Log(I0), Log(a), sma, inc, PA, dRA, dDec
-	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
-	# labels_2 = ['Log($I_0$)', 'f', '$\sigma$', 'Ri', 'Rout', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
-	labels_2 = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
 	if two_components:
 		p0_mc = p0_2
 		p_rang_mc = p_ranges_2
-		labs_mc = labels_2
 	else:
 		p0_mc = p0_gauss
 		p_rang_mc = p_ranges_gauss
-		labs_mc = labels_gauss
 
 	# execute the MCMC
 	sampled = mcmc_run( galargs=galargs, p0= p0_mc, p_ranges= p_rang_mc, 
-			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname='last_sampler', 
+			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False, extra_src=extra_sources )
-
-	# sampled = emcee.backends.HDFBackend( 'last_sampler.h5' )
-	bestfit = mcmc_plots( sampled, labels=labs_mc, burn_in= nsteps//3, figures=False )
-	np.savetxt( f'bestfit_params.txt', bestfit )
-
-	bestfit_plots( diskname, galargs=galargs, two_comp=two_components, extra_sources=extra_sources)		# make the UV plots and save the best model image
+	
+	bestfit_plots( diskname, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources)
 	# os.chdir( '../')
 
 
-# def main_fit( filename, T_exp=5000, nsteps=200, two_components=True, Ncpu=9, data_folder='', savedir='', ptgfile='', damp=False):
-# 	'''
-# 	Main pipeline for fitting YSO models with galario to a sky model (filename).
-# 	'''
 
-# 	generate_mock_obs( filename, T_exp=T_exp, damp=damp, 
-# 				   data_folder=data_folder, savedir=savedir, ptgfile=ptgfile)
-	
-# 	mcmc_fit()
-# residuals_mock_plot( diskname=diskname, T_exp=)
+
 
 
 
