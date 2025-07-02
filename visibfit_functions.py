@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 import os
-from local_variables import *
+from local_variables import *		# file with the local path pointers and cpu settings
 from astropy.io import fits
 import emcee
 import corner
