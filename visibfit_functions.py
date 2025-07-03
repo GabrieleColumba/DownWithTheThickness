@@ -104,7 +104,7 @@ def copy_extra_sources( diskname, nRMS=1 ):
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image' )		# noisy image with primary beam correction (otherwise damped twice)
+	table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )		# noisy image with primary beam correction (otherwise damped twice)
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 			# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']	# a, b and PA of beam
 	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
@@ -346,11 +346,10 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 		print('It was not possible to determine the autocorrelation time tau')
 		pass
 
-	samples = samp_bkend.get_chain()
-	flat_samples = samp_bkend.get_chain( discard=int(burn_in),  flat=True)
+	samples = samp_bkend.get_chain( discard=int(burn_in) )
 	if walk_clip_thresh != None:
 		samples = clip_chains( samples, thresh=walk_clip_thresh)		# remove outlying walkers
-		flat_samples = samples.reshape( -1, len(labels) )		# discarding the burn-in steps in the first step before chains
+	flat_samples = samples.reshape( -1, len(labels) )		# discarding the burn-in steps in the first step before chains
 
 	fig, axes = plt.subplots( len(labels), figsize=(8, 8), sharex=True)			# CHAIN traces
 	for i in range( len(labels)):
@@ -599,61 +598,6 @@ def min_bkg_rms( image):
 	return min( min(bkg_rms), rms(image) )
 
 
-def residuals_mock_plot( diskname, T_exp, ptgfile=''):
-	'''
-	Calculate the residuals between mock observations of the simulated sky model and the bestfit galario model.
-	'''
-	generate_mock_obs( filename='best_model.fits', T_exp=T_exp, ptgfile=ptgfile, damp=False, vistab_export=False)		# galario model
-	os.chdir( '../')
-
-	mod_tab = f'best_model/best_model.{config_name}.noisy.image'		# cleaned simanalyze best model image
-	img_tab = f'{diskname}.{config_name}.noisy.image'					# cleaned simanalyze simulation image
-	table = cto.table()
-	table.open( img_tab )
-	img = table.getcol('map').squeeze().copy( order='F') 			# simul
-	table.close()
-	table.open( mod_tab )
-	model_img = table.getcol('map').squeeze().copy( order='F') 	# model
-	table.close()
-	# dRA, dDec = np.deg2rad( np.loadtxt( 'bestfit_params.txt')[-2:] / 3600 )		# offsets in [rad]
-	#pixscale = fits.getval( 'skycut.fits', keyword='CDELT1')	# deg/pix
-	# img = snd.shift( img, shift=( np.array([ dDec, dRA])/pixscale)  )		# shift the sky sim to match the centred galario model
-	
-	# img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
-
-	# size = 300
-	# obs = crop_image( img, margins=[size, size])
-	# model = crop_image( model_img, margins=[size, size])
-	# res_n = (obs - model) / rms( img )		# residuals in RMS ratio of the full size img!
-	# # lim = np.quantile( res_n, [0.05, 0.95] )
-	# np.save( './best_model/' + 'residuals_n', res_n.T )
-
-	# ptitle = 'Residuals'
-	# fig, ax = plt.subplots( figsize=(6,6))	
-	# ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0 ) )	# transpose to have as sky model
-	# ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	# ax.axis( 'off' )
-	# fig.colorbar( ci, ax=ax, label='RMS units')
-	# plt.show()
-	# fig.savefig( ptitle + fig_ext , bbox_inches='tight')
-	# plt.close()
-
-
-	res_n = ( img - model_img) / rms( img )	        # residuals in RMS ratio of the full size img!
-	# lim = np.quantile( res_n, [0.05, 0.95] )
-	# np.save( './best_model/' + 'residuals_n', res_n.T )
-
-	ptitle = 'Residuals_full'
-	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.SymLogNorm( linthresh=1 ) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
-	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	ax.axis( 'off' )
-	fig.colorbar( ci, ax=ax, label='RMS units')
-	# plt.show()
-	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
-	plt.close()
-
-
 def residuals_vis_plot( diskname, model_vis):
 	'''
 	Calculate the residuals between the visibilities of the mock observations and the bestfit model (galario + multisource).
@@ -663,24 +607,50 @@ def residuals_vis_plot( diskname, model_vis):
 	casa_table.open( MSname, nomodify=False )
 	modeldata = casa_table.getcol('MODEL_DATA')		# inherit the shape structure
 	modeldata[:] = model_vis 		# copy model visibilities broadcasted to correct shape
-	casa_table.putcol( 'MODEL_DATA', modeldata )		# add the fitted model to the MS
+	casa_table.putcol( 'MODEL_DATA', modeldata )		# add the fitted model to the MS, here for residues (uvsub)
+	casa_table.putcol( 'CORRECTED_DATA', modeldata )		# add the fitted model to the MS, here just to be imaged
 	casa_table.flush()
-	casa_table.open( f'{diskname}.{config_name}.noisy.image' )
+	casa_table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
 	pixscale = abs( casa_table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
 	casa_table.close()
 
-	ctk.uvsub( vis= MSname )	# compute the RESIDUALS = DATA - MODEL  and puts them in the corrected_data column
+	ctk.tclean(		# image the best model !
+		vis=MSname,
+		imagename='./bestmod/best_model',
+		datacolumn='corrected',  	# Use the corrected_data where we stored the model visibilities
+		imsize=[1728,1728],			# lo dice lui boh
+		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
+		weighting='briggs',
+		niter=10000, 
+		threshold='0.01mJy',
+		restoration=True )                # No CLEANing, just make the residuals image
+	
+	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
+	best_img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
+	casa_table.close()
+	ptitle = 'Bestfit_model' 
+	fig, ax = plt.subplots( figsize=(6,6))  
+	ci = ax.imshow( best_img.T , origin='lower', cmap='gnuplot2', norm=mpl.colors.LogNorm( vmin=rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
+	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
+	ax.axis( 'off' )
+	fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
+	# plt.show()
+	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
+	plt.close()
+
+	ctk.clearcal( vis=MSname )		# copy DATA (mockobs) to CORR_DATA column before uvsub computes the residuals
+	ctk.uvsub( vis= MSname )		# compute the RESIDUALS = CORR_DATA - MODEL and puts them in CORRECTED_DATA column
 	ctk.tclean(		# image the residuals !
 		vis=MSname,
-		imagename='fitting_residuals',
+		imagename='./bestmod/best_residuals',
 		datacolumn='corrected',  	# Use the residuals
 		imsize=[1728,1728],			# lo dice lui boh
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
-		niter=0, )                # No CLEANing, just make the residuals image
+		niter=0, restoration=True)                # No CLEANing, just make the residuals image
 	
-	casa_table.open( 'fitting_residuals.image' )		# the one created above, in [Jy/beam]
+	casa_table.open( './bestmod/best_residuals.image' )		# the one created above, in [Jy/beam]
 	res_img = casa_table.getcol('map').squeeze().copy( order='F') 		# residuals				
 	casa_table.close()
 	res_n = res_img / rms( noisy_img )	        # residuals in RMS ratio of the full size img!
@@ -695,40 +665,28 @@ def residuals_vis_plot( diskname, model_vis):
 	fig.colorbar( ci, ax=ax, label='RMS units')
 	# plt.show()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
+	plt.close()
 
 	ptitle = 'Residuals_lin'
-	# fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', vmin=None, vmax=None )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
+	fig, ax = plt.subplots( figsize=(6,6))  
+	ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	# ax.axis( 'off' )
+	ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, label='RMS units')
 	# # plt.show()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
-
-	ctk.tclean(		# image the best model !
-		vis=MSname,
-		imagename='best_model',
-		datacolumn='data',  	# Use the residuals
-		imsize=[1728,1728],			# lo dice lui boh
-		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
-		weighting='briggs',
-		niter=0, )                # No CLEANing, just make the residuals image
-	
-	casa_table.open( 'best_model.image' )		# the one created above, in [Jy/beam]
-	best_img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
-	casa_table.close()
-	ptitle = 'Bestfit_model' 
+	res_hand = (noisy_img - best_img ) / rms( noisy_img)
+	ptitle = 'Residuals a mano'
 	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( best_img.T , origin='lower', cmap='gnuplot2', norm=mpl.colors.LogNorm( vmin=rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
+	ci = ax.imshow( res_hand.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
 	ax.axis( 'off' )
-	fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
-	# plt.show()
+	fig.colorbar( ci, ax=ax, label='RMS units')
+	# # plt.show()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
-
 	return
 
 
@@ -804,7 +762,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, ext
 	return bestmod_image, vis_model
 
 
-def bestfit_plots( diskname, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None):
+def bestfit_plots( diskname, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4):
 	'''
 	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
 	'''
@@ -813,9 +771,11 @@ def bestfit_plots( diskname, galargs=None, two_comp=True, sampler=None, monosour
 	labs_mc = labels_2c if two_comp else labels_gauss
 
 	if sampler is None:
-		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )
+		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
 	nsteps = sampler.get_chain().shape[0]
-	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in= nsteps//3, walk_clip_thresh=5, figures=False )
+	if burnin is None:
+		burnin = nsteps//3
+	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
 	np.savetxt( f'bestfit_params.txt', bestfit )
 
 	if galargs is None:

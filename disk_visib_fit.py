@@ -18,7 +18,7 @@ if __name__=='__main__':
 	parser.add_argument('-nsteps', type=int, default=5000, help='MCMC steps (default: 5000)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')
-	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit (default: False)')
+	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )
 
 	if args['diskname'] == 'all':
@@ -30,7 +30,7 @@ if __name__=='__main__':
 		print( len(fitslist), 'files found')
 
 		for fname in fitslist:
-			diskname = fname.replace( data_folder, '' ).replace( f'_{args['RT_wavel']}um', '').strip('.fits')
+			diskname = fname.replace( data_folder, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 			if int( diskname.strip( 'disk_xyz') ) in Tung_nofit:
 				print('Skipping NO-FIT target: ', fname , '\n')
 			else:
@@ -45,7 +45,7 @@ if __name__=='__main__':
 				# except: print('No res for ', diskname)
 	else:
 		# # open the fits file with header
-		fname = data_folder + args['diskname'] + f'_{args['RT_wavel']}um.fits'
+		fname = data_folder + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
 		# main_fit( fname, T_exp=args['Texp'], nsteps=args['nsteps'], Ncpu=Ncpu, two_components=True, damp=False, 
 		# 	  	 data_folder=data_folder, savedir=savedir, ptgfile=ptgfile)
 
