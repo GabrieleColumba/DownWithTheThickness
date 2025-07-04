@@ -822,7 +822,7 @@ def get_galargs():
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=9, savedir='', monosource=True):
+def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
