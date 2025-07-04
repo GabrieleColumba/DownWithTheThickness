@@ -104,7 +104,7 @@ def copy_extra_sources( diskname, nRMS=1 ):
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )		# noisy image with primary beam correction (otherwise damped twice)
+	table.open( f'{diskname}.{config_name}.noisy.image' )		# noisy image 
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 			# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']	# a, b and PA of beam
 	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
@@ -598,7 +598,7 @@ def min_bkg_rms( image):
 	return min( min(bkg_rms), rms(image) )
 
 
-def residuals_vis_plot( diskname, model_vis):
+def residuals_vis_plot( diskname, model_vis, T_exp):
 	'''
 	Calculate the residuals between the visibilities of the mock observations and the bestfit model (galario + multisource).
 	'''
@@ -607,10 +607,10 @@ def residuals_vis_plot( diskname, model_vis):
 	casa_table.open( MSname, nomodify=False )
 	modeldata = casa_table.getcol('MODEL_DATA')		# inherit the shape structure
 	modeldata[:] = model_vis 		# copy model visibilities broadcasted to correct shape
-	casa_table.putcol( 'MODEL_DATA', modeldata )		# add the fitted model to the MS, here for residues (uvsub)
+	# casa_table.putcol( 'MODEL_DATA', modeldata )		# add the fitted model to the MS, here for residues (uvsub)
 	casa_table.putcol( 'CORRECTED_DATA', modeldata )		# add the fitted model to the MS, here just to be imaged
 	casa_table.flush()
-	casa_table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )
+	casa_table.open( f'{diskname}.{config_name}.noisy.image' )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
 	pixscale = abs( casa_table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
 	casa_table.close()
@@ -622,22 +622,38 @@ def residuals_vis_plot( diskname, model_vis):
 		imsize=[1728,1728],			# lo dice lui boh
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
-		niter=10000, 
-		threshold='0.01mJy',
-		restoration=True )                # No CLEANing, just make the residuals image
+		niter=10000, 	            # CLEANing, is this OK ?
+		threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy',
+		) 
 	
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
 	best_img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
 	casa_table.close()
 	ptitle = 'Bestfit_model' 
 	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( best_img.T , origin='lower', cmap='gnuplot2', norm=mpl.colors.LogNorm( vmin=rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
+	ci = ax.imshow( best_img.T , origin='lower', cmap='gnuplot2', norm=mpl.colors.LogNorm( vmin=rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
 	ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
 	# plt.show()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
+
+	res_hand = (noisy_img - best_img ) / rms( noisy_img)		# " A MANO "
+	ptitle = 'Bestfit_residuals'
+	fig, ax = plt.subplots( figsize=(6,6))  
+	ci = ax.imshow( res_hand.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model 
+	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
+	ax.axis( 'off' )
+	fig.colorbar( ci, ax=ax, label='RMS units')
+	# # plt.show()
+	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
+	plt.close()
+	
+	casa_table.open( MSname, nomodify=False )
+	casa_table.putcol( 'MODEL_DATA', modeldata )		# add the fitted model to the MS, here for residues (uvsub)
+	casa_table.flush()
+	casa_table.close()
 
 	ctk.clearcal( vis=MSname )		# copy DATA (mockobs) to CORR_DATA column before uvsub computes the residuals
 	ctk.uvsub( vis= MSname )		# compute the RESIDUALS = CORR_DATA - MODEL and puts them in CORRECTED_DATA column
@@ -648,7 +664,8 @@ def residuals_vis_plot( diskname, model_vis):
 		imsize=[1728,1728],			# lo dice lui boh
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
-		niter=0, restoration=True)                # No CLEANing, just make the residuals image
+		niter=10000, 
+		threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy')                # No CLEANing, just make the residuals image
 	
 	casa_table.open( './bestmod/best_residuals.image' )		# the one created above, in [Jy/beam]
 	res_img = casa_table.getcol('map').squeeze().copy( order='F') 		# residuals				
@@ -657,30 +674,19 @@ def residuals_vis_plot( diskname, model_vis):
 	# lim = np.quantile( res_n, [0.05, 0.95] )
 	# np.save( './best_model/' + 'residuals_n', res_n.T )
 
-	ptitle = 'Residuals_log'
-	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.SymLogNorm( linthresh=1 , vmax= 10, vmin=-10) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
-	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	ax.axis( 'off' )
-	fig.colorbar( ci, ax=ax, label='RMS units')
-	# plt.show()
-	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
-	plt.close()
-
-	ptitle = 'Residuals_lin'
-	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
-	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	ax.axis( 'off' )
-	fig.colorbar( ci, ax=ax, label='RMS units')
+	# ptitle = 'Residuals_log'
+	# fig, ax = plt.subplots( figsize=(6,6))  
+	# ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.SymLogNorm( linthresh=1 , vmax= 10, vmin=-10) )    # transpose to have as sky model    
+	# ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
+	# ax.axis( 'off' )
+	# fig.colorbar( ci, ax=ax, label='RMS units')
 	# # plt.show()
-	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
-	plt.close()
+	# fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
+	# plt.close()
 
-	res_hand = (noisy_img - best_img ) / rms( noisy_img)
-	ptitle = 'Residuals a mano'
+	ptitle = 'Residuals_lin (vis)'
 	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( res_hand.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model    norm=mpl.colors.SymLogNorm( linthresh=0.5 ) )
+	ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model  
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
 	ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, label='RMS units')
@@ -704,7 +710,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, extra_sources=[0,0] ):
+def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=40e3, extra_sources=[0,0] ):
 	''' Produce UVplots for all the bestfit solutions. '''
 	# uvbin_size = 30e3     # uv-distance bin, units: wle
 
@@ -728,7 +734,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, ext
 				npix, pixscale = extra_sources[0].shape[0], extra_sources[1]
 			else:		# these two should coincide anyway
 				table = cto.table()
-				table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )		# only for shape and pixscale
+				table.open( f'{diskname}.{config_name}.noisy.image' )		# only for shape and pixscale
 				npix = table.getcol('map').squeeze().shape[0]
 				pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])	# [rad/pix]
 				table.close()
@@ -762,7 +768,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, ext
 	return bestmod_image, vis_model
 
 
-def bestfit_plots( diskname, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4):
+def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4):
 	'''
 	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
 	'''
@@ -783,10 +789,10 @@ def bestfit_plots( diskname, galargs=None, two_comp=True, sampler=None, monosour
 	if extra_sources is None:
 		extra_sources = copy_extra_sources( diskname ) if monosource==False else (0,0)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources)		# make the UV plots and save the best model image
-	residuals_vis_plot( diskname, mod_vis )
+	residuals_vis_plot( diskname, mod_vis, T_exp )
 
 	# # best model visual check
-	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-8, a_max=None)		# [:, ::-1]
+	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
 	plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')	# slicing to have it mirrored as casa
 	plt.title('galario best model')
 	#plt.show()
@@ -816,7 +822,7 @@ def get_galargs():
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, nsteps=200, two_components=True, Ncpu=9, savedir='', monosource=True):
+def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=9, savedir='', monosource=True):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
@@ -860,7 +866,7 @@ def mcmc_regress( diskname, nsteps=200, two_components=True, Ncpu=9, savedir='',
 			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False, extra_src=extra_sources )
 	
-	bestfit_plots( diskname, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources)
+	bestfit_plots( diskname, T_exp, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources)
 	# os.chdir( '../')
 
 

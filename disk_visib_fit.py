@@ -53,10 +53,10 @@ if __name__=='__main__':
 		generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
 				   data_folder=data_folder, savedir=savedir, ptgfile=ptgfile )
 
-		mcmc_regress( args['diskname'], nsteps=args['nsteps'], two_components=args['2c'],
+		mcmc_regress( args['diskname'], args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
 			    Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'])
 		# os.chdir( savedir + args['diskname'] )
-		# residuals_vis_plot( diskname=args['diskname'], )
+		# bestfit_plots( args['diskname'], args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4 )
 
 
 
