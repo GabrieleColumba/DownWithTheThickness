@@ -24,21 +24,21 @@ if __name__=='__main__':
 	if args['diskname'] == 'all':
 
 		fitslist = sorted( glob.glob( data_folder + '*.fits') )
+		print( len(fitslist), 'files found')
 		if fitslist == []:
 			print('NO FILES FOUND, check again the folder path!')
 			sys.exit()
-		print( len(fitslist), 'files found')
 
 		for fname in fitslist:
 			diskname = fname.replace( data_folder, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 			if int( diskname.strip( 'disk_xyz') ) in Tung_nofit:
 				print('Skipping NO-FIT target: ', fname , '\n')
 			else:
-				try:
-					generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
-					    data_folder=data_folder, savedir=savedir, ptgfile=ptgfile)	
-					mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'], monosource=args['monosrc'], Ncpu=Ncpu, savedir=savedir)
-				except: print( 'skipping', diskname)
+				#try:
+				generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
+					data_folder=data_folder, savedir=savedir, ptgfile=ptgfile)	
+				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], monosource=args['monosrc'], Ncpu=Ncpu, savedir=savedir)
+				#except: print( 'skipping', diskname)
 				# try:
 				# 	os.chdir( savedir + diskname )
 				# 	residuals_mock_plot( diskname=diskname, T_exp=args['Texp'], ptgfile=ptgfile)
