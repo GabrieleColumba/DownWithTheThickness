@@ -86,11 +86,11 @@ def plot_opacity():
 	plt.show()
 
 
-def plot_Fv_compare( df):
+def plot_Fv_compare( df, kappa):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
-	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.57 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23		# [Jy] 
-	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.57 * planck_bbody( v_obs, 
+	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * kappa * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23		# [Jy] 
+	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * kappa * planck_bbody( v_obs, 
 								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
 
 	ptitle = 'Flux_thickness'
@@ -105,7 +105,23 @@ def plot_Fv_compare( df):
 	ax.legend()
 	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
 	plt.show()
+	
 
+def thick_sim_inspo( df, kappa, v_obs):
+	'''directly from Tungs_truth.dat'''
+	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_disk.iloc[i] *au_to_rad, l_star=df.L_acc.iloc[i] + df.L_int.iloc[i]) for i in range( len(df.R_disk)) ]
+	thin_flux_sim = df.M_disk/100 * const.M_sun.cgs.value * kappa * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
+	
+	ptitle = 'Simulation thin vs thick spread'
+	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
+	ax.scatter( x=df.R_disk, y= F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
+	ax.scatter( x=df.R_disk, y= thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T=122K)', alpha=0.7)
+	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
+	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
+	ax.legend()
+	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	plt.show()
+	
 
 def plot_mass_compare( df):
 	ptitle = 'Mass_comparison'
