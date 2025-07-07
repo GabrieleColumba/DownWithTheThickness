@@ -50,7 +50,7 @@ if __name__=='__main__':
 		# 	  	 data_folder=data_folder, savedir=savedir, ptgfile=ptgfile)
 
 
-		generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
+		generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
 				   data_folder=data_folder, savedir=savedir, ptgfile=ptgfile )
 
 		mcmc_regress( args['diskname'], args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],

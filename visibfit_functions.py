@@ -435,7 +435,7 @@ def cancel_extra_sources( skymodel, nRMS=1, figure=False ):
 		diag_img[ miny:maxy , minx:maxx] = sky_image[ miny:maxy , minx:maxx ]	
 		ax.imshow( diag_img, origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
 		ax.set_axis_off()
-		plt.show()
+		# plt.show()
 		fig.savefig( 'levelled_sky' + fig_ext, bbox_inches='tight', dpi=200)
 		plt.close()
 
@@ -483,7 +483,7 @@ def analytic_sens( t, a=653.835, b=0.5, c=-0.02):
 	return a * t**(-b) + c
 
 
-def prepare_sky_model( filename, data_folder, savedir, damp, monosource):
+def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1):
 	'''
 	Open fits file with desired sky brightness model and cut it / damp it before mock-obs.
 	'''
@@ -513,7 +513,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource):
 		skycut = np.clip( skycut, a_min=1e-8, a_max=None )	# avoid super low values, amin from d17 bkg patch rms=2e-8 Jy/pix
 
 	if monosource:
-		skycut = cancel_extra_sources( skycut, nRMS=1)
+		skycut = cancel_extra_sources( skycut, nRMS=nRMS, figure=True)
 
 	hdr['CRPIX1'] = hdr['CRPIX2'] = pixcut
 	hdr['CRVAL1'] = 246.6175 ; hdr['CRVAL2'] = -24.4017		# so that central pixel corresponds to centre of pointing file 1x
@@ -526,11 +526,11 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource):
 	plt.close()
 
 
-def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, vistab_export=True):
+def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True):
 	'''
 	Call CASA simobserve and simanalyze to produce mock observations of filename.
 	'''
-	prepare_sky_model( filename=filename, data_folder=data_folder, savedir=savedir, damp=damp, monosource=monosource)
+	prepare_sky_model( filename=filename, data_folder=data_folder, savedir=savedir, damp=damp, monosource=monosource, nRMS=nRMS)
 
 	image_to_process = 'skycut.fits'		# Import fits file
 	ctk.importfits( fitsimage=image_to_process , imagename='skymodel.imag', overwrite=True)

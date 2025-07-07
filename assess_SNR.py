@@ -12,9 +12,9 @@ from scipy.optimize import curve_fit
 
 
 
-T_exp = 600    # s
+T_exp = 3600    # s
 config_name = 'alma.cycle11.6'
-savedir = '/Users/gcolumba/PostDoc_Mac/PostProc/runs_600s/'		# where the simanalyze products are saved
+savedir = '/Users/gcolumba/PostDoc_Mac/PostProc/run_3600s_2c_mono/'		# where the simanalyze products are saved
 
 
 def crop_image( img, centre=None, margins=[100, 100] ):
@@ -108,11 +108,11 @@ def plot_it(df):
 	dff = df.reset_index()
 	dff.plot( xticks=dff.index, rot=90, logy=True, ax=ax, marker='o')
 	ax.set_xticklabels( df.index)
-	ax.axhline( y=[0.002], color='gray', ls=':')
+	# ax.axhline( y=[0.002], color='gray', ls=':')
 	ax.axhline( y=10, color='gray', ls='--')
 	ax.axhline( y=100, color='gray', ls='-')
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( savedir + 'rough_SNR_plot.pdf' , bbox_inches='tight')
+	fig.savefig( savedir + 'SNR_plot.pdf' , bbox_inches='tight')
 	plt.show()
 
 
@@ -152,8 +152,7 @@ if __name__=='__main__':
 		# noise = min_bkg_rms( img )		# the minimum rms from bkg patches
 		noise = rms( img )
 
-
-		snr = peak_beam / noise
+		snr = peak / noise
 		# SNRs.append( [projectname, f'{snr :.2f}', peak, peak_beam] ) 
 		SNRs.append( [projectname.strip( 'disk' ), snr, peak, peak_beam, noise] )
 		table.close()
