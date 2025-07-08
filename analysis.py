@@ -8,13 +8,17 @@ import pandas as pd
 # import scipy.integrate as si
 import astropy.units as u
 from astropy import constants as const
-plt.rcParams.update({ 'font.size':13, 'legend.fontsize':11})
+import casatools as cto
+from skimage.segmentation import clear_border
+from skimage.measure import label, regionprops, regionprops_table
+from skimage.morphology import closing, footprints
+plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10})
 
 T_exp = 3600	# s
-results_dir = f'/scratch/astro/gabriele.columba/results/run_{T_exp}s_2c/'
-# results_dir = '/Users/gcolumba/PostDoc_Mac/PostProc/runs_5Ks/'
-truth_path = './run/simulations/Tungs_truths.dat'
-figs_ext = '.png'
+# results_dir = f'/scratch/astro/gabriele.columba/results/run_{T_exp}s_2c/'
+results_dir = f'/Users/gcolumba/PostDoc_Mac/PostProc/run_{T_exp}s_2c_mono/'
+truth_path = './Tungs_truths.dat'
+figs_ext = '.pdf'
 
 Tung_nofit = [29, 43, 63, 72, 75, 82, 83]
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
@@ -76,7 +80,7 @@ def plot_opacity():
 
 	fig, ax = plt.subplots()
 	ax.plot( opac_df.lam *1e-3, opac_df.kabs, label='K_abs (opTool)', c='k', ls='--')		# lambda from um to mm
-	ax.plot( opac_df.lam *1e-3, opac_df.ksca, label='K_sca', alpha=0.2)
+	# ax.plot( opac_df.lam *1e-3, opac_df.ksca, label='K_sca', alpha=0.2)
 	ax.plot( opac_df.lam *1e-3, k_v_15, label=r'k($\beta=1.5$)', c='b', ls='-.')
 	ax.plot( opac_df.lam *1e-3, k_v_1, label=r'k($\beta=1.0$)', c='r')
 	ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
@@ -86,24 +90,50 @@ def plot_opacity():
 	plt.show()
 
 
-def plot_Fv_compare( df, kappa):
+def plot_Fv_compare_mod( df, kappa, rdata='sim', Tbb=122):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
-	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * kappa * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23		# [Jy] 
-	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * kappa * planck_bbody( v_obs, 
+	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
+	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, 
 								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
+	
+	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
+	Fobs = df.F_obs * (1 - 0.7 * np.sin( np.deg2rad( df.i_sim)) )		# reduce obs flux by an amount prop to inc
+
+	ptitle = 'Flux_thickness_MOD'
+	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
+	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
+	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
+	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T Tung)', alpha=0.8)
+	ax.scatter( x=Rdata, y=Fobs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
+	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
+	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	ax.legend( loc='lower right')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + figs_ext , bbox_inches='tight')
+	plt.show()
+
+
+def plot_Fv_compare( df, kappa, rdata='sim', Tbb=122):
+
+	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
+	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
+	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, 
+								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
+	
+	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
 
 	ptitle = 'Flux_thickness'
-	fig, ax = plt.subplots( figsize=(8,5), tight_layout=True)
-	ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
-	ax.scatter( x=df.R_obs, y=df.F_obs, marker='o', c='g', label='Observed flux', alpha=0.9 )		# observed fluxes
-	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=thin_flux_sim2, marker='+', c='gray', label='Thin flux from Msim (T Tung)', alpha=0.8)
-	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='v', c='r', label='Thick flux from Rsim', alpha=0.7)
-	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
+	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
+	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
+	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
+	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T Tung)', alpha=0.8)
+	ax.scatter( x=Rdata, y=df.F_obs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
+	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	ax.legend()
-	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	ax.legend( loc='lower right')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + figs_ext , bbox_inches='tight')
 	plt.show()
 	
 
@@ -118,8 +148,8 @@ def thick_sim_inspo( df, kappa, v_obs):
 	ax.scatter( x=df.R_disk, y= thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T=122K)', alpha=0.7)
 	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
-	ax.legend()
-	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	ax.legend( loc='lower right')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + figs_ext , bbox_inches='tight')
 	plt.show()
 	
 
@@ -128,7 +158,7 @@ def plot_mass_compare( df):
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )		# y=x identity
 	ax.scatter( x=df.M_sim/100, y=df.M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
-	ax.set( xlabel= r'$ M_\mathrm{sim} / 100 $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
+	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
 	plt.show()
@@ -140,9 +170,9 @@ def plot_radius_compare( df):
 	to_as = 1 # np.rad2deg(1) * 3600		# from rad to arcsec
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	ax.axline( xy1=(10, 10), slope=1, ls='--', c='gray' )		# y=x identity
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs/1.42 *to_as, marker='o', c='b', label='$R_{68%}$', alpha=0.6)
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs/1.42 *to_as, marker='o', c='r', label='$R_{68%}$', alpha=0.6)
 	ax.scatter( x=df.R_sim *to_as, y=df.R_obs *1   *to_as, marker='o', c='g', label='$R_{90%}$', alpha=0.8)		# observed radii
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs*1.14 *to_as, marker='o', c='r', label='$R_{95%}$', alpha=0.6)
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs*1.14 *to_as, marker='o', c='b', label='$R_{95%}$', alpha=0.6)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
@@ -151,15 +181,67 @@ def plot_radius_compare( df):
 
 def plot_inc_compare( df):
 	'''Assuming inc in [deg]. '''
+	inc = df.i_sim.copy() 
+	inc[ inc>= 90] = inc - 90
 	ptitle = 'Inclination_comparison'
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
-	ax.scatter( x=df.i_sim, y=df.i_obs, marker='o', c='orange', alpha=0.8)
+	ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
 	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
 	plt.show()
 
+
+def rms( arr ):
+	return np.sqrt( np.sum( arr**2 ) / len( arr.flatten() ) )
+
+
+def count_flux_sources( diskname, nRMS=5, config_name= 'alma.cycle11.6' ):
+	'''
+	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
+	'''
+	os.chdir( results_dir + diskname )
+	table = cto.table()
+	table.open( f'{diskname}.{config_name}.noisy.image' )		# noisy image 
+	noisy_img = table.getcol('map').squeeze().copy( order='F').T 			# copy simanalyze noisy image (convolved)  [Jy/beam]
+	beam_dict = table.getkeyword('imageinfo')['restoringbeam']	# a, b and PA of beam
+	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
+	table.close()
+
+	## apply threshold to identify the sources on the convolved image
+	thresh = nRMS * rms( noisy_img ) 		# min_bkg_rms( noisy_img )
+	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
+	cleared = clear_border( bw )		# remove artifacts connected to image border
+	label_image = label( cleared )		# label image regions
+	nimg_masked = np.where( noisy_img > thresh, noisy_img, 0.)		# keep everything above n*RMS
+	
+	sources_df = pd.DataFrame( regionprops_table( label_image,
+		properties=('centroid', 'orientation', 'axis_major_length', 'axis_minor_length', 'equivalent_diameter_area'), ) ).rename(
+			columns={'centroid-0':'y0', 'centroid-1':'x0', 'orientation':'PA', 'axis_major_length':'a', 'axis_minor_length':'b', 
+				'equivalent_diameter_area':'diam'} )
+	
+	## keep only the central source !
+	target_idx = ((sources_df[['y0','x0']] - np.array(noisy_img.shape)/2 )**2 ).sum( axis=1).idxmin()	# central source (target)
+	miny, minx, maxy, maxx = regionprops( label_image )[target_idx].bbox		# rectangle over central source
+	target_img = nimg_masked[ miny:maxy , minx:maxx]		# [Jy/beam]
+
+	beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
+	beam_to_pix = ( 3600* np.rad2deg( img_pixscale ) )**2  / beam_area		# to convert the flux from [Jy/beam] to [Jy/pix]
+	F_v = np.sum( target_img * beam_to_pix )		# integrated flux
+
+	# if (nimg_masked > 0).any():	
+	# 	fig, ax = plt.subplots( figsize=(8, 8))		# diagnostic figure
+	# 	diag_img = np.where( noisy_img > thresh, noisy_img, np.nan)
+	# 	diag_img[ miny:maxy , minx:maxx] = np.nan
+	# 	ax.imshow( target_img, origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
+	# 	ax.set_axis_off()
+	# 	# fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=600)
+	# 	plt.close()
+	# else: 
+	# 	print( '\nNo extra sources found in the image!\n' )
+	# 	return 0, img_pixscale
+	return F_v		# [Jy] integrated flux observed
 
 
 
@@ -262,20 +344,21 @@ if __name__=='__main__':
 				R_95 = R_68 * 1.62
 				R_obs = R_90     # as Tung ?
 
-				F_v = gauss_flux_tot( I0_d, sma, 300*R_obs)      # observed flux density [Jy]
+				F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
+				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5 )
 				
 				# theoretical fully thick disk flux
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
 
-				k_v = 0.57 # kappa    # cm2 / g
+				k_v =  kappa_empir( v_obs, beta=1.) # kappa    # cm2 / g		# optool (true): 0.54 @3mm and 0.138 @7mm
 				T_avg = 122     # K		Tung default: 122 K
 
 				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
 
 			except: 
 				print('No bestfit params found for ', diskname)
-				M_obs = R_obs = F_v = F_v_thicc = i_obs = np.nan
+				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = np.nan
 			
 			finally:
 				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
@@ -284,17 +367,25 @@ if __name__=='__main__':
 				R_obs = (R_obs * dist).to_value( u.au )			# rad to au
 				i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
 				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
-				paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, F_v_thicc, i_obs, i_sim, L_tot] )
+				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
+
+				paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
 
 	res_df = pd.DataFrame( paramlist, 
-				   columns=['source', 'R_obs', 'R_sim', 'M_obs', 'M_sim', 'epsilon_M', 'F_obs', 'F_thick', 'i_obs', 'i_sim', 'L_tot']
+				   columns=['source', 'R_obs', 'R_sim', 'M_obs', 'M_sim', 'epsilon_M', 'F_obs', 'Fv_c', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
 				   ).set_index('source')
 	
 	os.chdir( results_dir )
 	res_df.to_csv( f'analysis_results-{T_exp}s.txt', sep='\t')#, float_format='%.2e')
 	
-	plot_Fv_compare( res_df )
-	plot_inc_compare( res_df )
-	plot_mass_compare( res_df )
-	plot_radius_compare( res_df )
+	# k_v = 0.54
+	# plot_opacity()
+	plot_Fv_compare( res_df, k_v )
+	# plot_Fv_compare_mod( res_df, k_v )
+	# plot_inc_compare( res_df )
+	# plot_mass_compare( res_df )
+	# plot_radius_compare( res_df )
+	# thick_sim_inspo( truths_df, 0.54, v_obs)
 
+	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
+	# thick_sim_inspo( truths_total, 0.54, v_obs)
