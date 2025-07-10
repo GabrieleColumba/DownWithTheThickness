@@ -43,18 +43,15 @@ if __name__=='__main__':
 				# 	os.chdir( savedir + diskname )
 				# 	residuals_mock_plot( diskname=diskname, T_exp=args['Texp'], ptgfile=ptgfile)
 				# except: print('No res for ', diskname)
+	
 	else:
-		# # open the fits file with header
 		fname = data_folder + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
-		# main_fit( fname, T_exp=args['Texp'], nsteps=args['nsteps'], Ncpu=Ncpu, two_components=True, damp=False, 
-		# 	  	 data_folder=data_folder, savedir=savedir, ptgfile=ptgfile)
 
-
-		generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
+		generate_mock_obs( fname, args["RT_wavel"], T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
 				   data_folder=data_folder, savedir=savedir, ptgfile=ptgfile )
 
 		mcmc_regress( args['diskname'], args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-			    Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'])
+			    Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=1.5)
 		# os.chdir( savedir + args['diskname'] )
 		# bestfit_plots( args['diskname'], args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4 )
 

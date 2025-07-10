@@ -117,7 +117,7 @@ def copy_extra_sources( diskname, nRMS=1 ):
 	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
-	nimg_masked = np.where( noisy_img > thresh, deconvolved, 0)		# keep everything above n*RMS
+	nimg_masked = np.where( noisy_img > thresh, deconvolved, 0)		# keep everything above n*RMS # TODO: try using the entire deconv image (except at centre)
 	
 	sources_df = pd.DataFrame( regionprops_table( label_image,
 		properties=('centroid', 'orientation', 'axis_major_length', 'axis_minor_length', 'equivalent_diameter_area'), ) ).rename(
@@ -135,7 +135,7 @@ def copy_extra_sources( diskname, nRMS=1 ):
 		diag_img[ miny:maxy , minx:maxx] = np.nan
 		ax.imshow( diag_img	, origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
 		ax.set_axis_off()
-		fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=600)
+		fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=400)
 		plt.close()
 	else: 
 		print( '\nNo extra sources found in the image!\n' )
@@ -522,11 +522,12 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1)
 	
 	plt.imshow(  np.clip( skycut[:, ::-1 ], a_min=1e-8, a_max=None), 		# 1e-8 Jy/pix should be a fair rms low bound
 			origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
-	plt.savefig( 'sky_model' + fig_ext)
+	plt.axis( False )
+	plt.savefig( 'sky_model' + fig_ext, bbox_inches='tight')
 	plt.close()
 
 
-def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True):
+def generate_mock_obs( filename, RT_wav, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True):
 	'''
 	Call CASA simobserve and simanalyze to produce mock observations of filename.
 	'''
@@ -537,7 +538,7 @@ def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', 
 	ctk.imhead( imagename='skymodel.imag', mode='put', hdkey='bunit', hdvalue='Jy/pixel')		# Edit image header
 
 	# Generate synthetic visibilities
-	diskname = filename.replace( data_folder, '' ).replace('_3000um', '').strip('.fits')  	# each one a separate folder
+	diskname = filename.replace( data_folder, '' ).replace(f'_{RT_wav}um', '').strip('.fits')  	# each one a separate folder
 	os.chdir( '../' )
 	ctk.simobserve( project=diskname ,
 		skymodel= f'{diskname}/skymodel.imag' ,
@@ -795,14 +796,10 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
 	plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')	# slicing to have it mirrored as casa
 	plt.title('galario best model')
+	plt.axis(False)
 	#plt.show()
-	plt.savefig( f'galario_sky-model_bestfit' + fig_ext)
+	plt.savefig( f'galario_sky-model_bestfit' + fig_ext, bbox_inches='tight')
 	plt.close()
-	# plot_img = np.clip( model_image, a_min= 1e-10, a_max=None)		# [:, ::-1]
-	# plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
-	# plt.title('galario best model')
-	# #plt.show()
-	# plt.savefig( f'galario_sky-model_bestfit__whole.png')
 	plt.close()
 	return print( '\n Best-fit plots and images saved.\n')
 
@@ -822,14 +819,14 @@ def get_galargs():
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True):
+def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True, nRMS=1.):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
 	# projectname = filename.strip( savedir ).strip('_3000um.fits')  	# each one a separate folder
 	os.chdir( savedir + diskname )
 	galargs = get_galargs() 
-	extra_sources = copy_extra_sources( diskname ) if monosource==False else (0,0)		# deal with multiplicity in FoV
+	extra_sources = copy_extra_sources( diskname, nRMS=nRMS ) if monosource==False else (0,0)		# deal with multiplicity in FoV
 
 	# parameter space domain
 	p_ranges_2 = np.array([[8., 15],		# Log10( I0disk )	[Log(Jy/sr)]
@@ -837,7 +834,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[1e-5, .7],		# sigma i.e. sma [arcsec]
 						[1e-3, 6],		# Ri [arcsec]
 						# [0.5, 10],		# Rout [arcsec]
-						[1, 5],			# p_index []
+						[1, 10],			# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)

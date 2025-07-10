@@ -12,13 +12,13 @@ import casatools as cto
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
-plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10})
+plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10, 'figure.dpi':220})
 
 T_exp = 3600	# s
 # results_dir = f'/scratch/astro/gabriele.columba/results/run_{T_exp}s_2c/'
 results_dir = f'/Users/gcolumba/PostDoc_Mac/PostProc/run_{T_exp}s_2c_mono/'
 truth_path = './Tungs_truths.dat'
-figs_ext = '.pdf'
+figs_ext = '.png'
 
 Tung_nofit = [29, 43, 63, 72, 75, 82, 83]
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
@@ -173,7 +173,7 @@ def plot_radius_compare( df):
 	ax.scatter( x=df.R_sim *to_as, y=df.R_obs/1.42 *to_as, marker='o', c='r', label='$R_{68%}$', alpha=0.6)
 	ax.scatter( x=df.R_sim *to_as, y=df.R_obs *1   *to_as, marker='o', c='g', label='$R_{90%}$', alpha=0.8)		# observed radii
 	ax.scatter( x=df.R_sim *to_as, y=df.R_obs*1.14 *to_as, marker='o', c='b', label='$R_{95%}$', alpha=0.6)
-	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log', title=ptitle )
+	ax.set( xlabel= r'$ R_\mathrm{sim} $ [au]', ylabel=r'$ R_\mathrm{obs} $ [au]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
 	plt.show()
@@ -382,10 +382,10 @@ if __name__=='__main__':
 	# plot_opacity()
 	plot_Fv_compare( res_df, k_v )
 	# plot_Fv_compare_mod( res_df, k_v )
-	# plot_inc_compare( res_df )
-	# plot_mass_compare( res_df )
-	# plot_radius_compare( res_df )
-	# thick_sim_inspo( truths_df, 0.54, v_obs)
+	plot_inc_compare( res_df )
+	plot_mass_compare( res_df )
+	plot_radius_compare( res_df )
+	thick_sim_inspo( truths_df, 0.54, v_obs)
 
 	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	# thick_sim_inspo( truths_total, 0.54, v_obs)
