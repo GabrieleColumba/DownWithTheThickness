@@ -6,6 +6,8 @@ import matplotlib as mpl
 import os
 from local_variables import *		# file with the local path pointers and cpu settings
 from astropy.io import fits
+# from astropy import units as u
+# from astropy import constants as const
 import emcee
 import corner
 import pandas as pd
@@ -22,6 +24,30 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 # os.environ["OMP_NUM_THREADS"] = "1"
 
+mm3 = 0.00299792458		# wavelength [metres]
+
+def compare_gauss_plumm():
+	rarr = np.linspace(0, 6, 600)
+	sma = 0.3
+	gp = GaussianProfile( rarr, 1, sigma=sma)
+	ris = sma * np.array([1,2,3])
+	pidxs = np.linspace(1, 5, 5)
+	n = len(ris) * len(pidxs)
+	colors = plt.cm.jet( np.linspace(0,1,n) )	# colouring lines
+	i = 0
+		
+	fig, ax = plt.subplots( figsize=(8, 8))		# diagnostic figure
+	ax.plot( rarr, gp, c='k', lw=2)
+
+	for ri in ris:
+		for p in pidxs:
+			pp = Plummer_envelope( rarr, 1, ri, 6, p)
+			ax.plot( rarr, pp, c=colors[i], alpha=0.7, label=f'Ri={ri}, p={p :.2f}')
+			ax.set( xscale='linear', yscale='log')
+			i +=1
+
+	ax.legend()
+	plt.show()
 
 
 def crop_image( img, centre=None, margins=[100, 100] ):
@@ -415,7 +441,7 @@ def cancel_extra_sources( skymodel, nRMS=1, figure=False ):
 	bw = closing( sky_image > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
-	sky_masked = np.where( sky_image > thresh, noise_lev, sky_image)		# keep everything below n*RMS
+	sky_masked = np.where( sky_image > thresh, noise_lev, sky_image)		# keep everything below n*RMS 	# keep thresh or RMS ?
 	# sky_masked = np.clip( sky_image, a_max= 3* min_bkg_rms( sky_image), a_min=None)	# this cancels more but creates gradini
 
 	sources_df = pd.DataFrame( regionprops_table( label_image,
@@ -433,7 +459,7 @@ def cancel_extra_sources( skymodel, nRMS=1, figure=False ):
 		# thresh = 3* min_bkg_rms( sky_image)		# gradino
 		diag_img = np.where( sky_image > thresh, np.nan, sky_image)
 		diag_img[ miny:maxy , minx:maxx] = sky_image[ miny:maxy , minx:maxx ]	
-		ax.imshow( diag_img, origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
+		ax.imshow( diag_img[:, ::-1 ], origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
 		ax.set_axis_off()
 		# plt.show()
 		fig.savefig( 'levelled_sky' + fig_ext, bbox_inches='tight', dpi=200)
@@ -483,7 +509,7 @@ def analytic_sens( t, a=653.835, b=0.5, c=-0.02):
 	return a * t**(-b) + c
 
 
-def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1):
+def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1, wle=mm3):
 	'''
 	Open fits file with desired sky brightness model and cut it / damp it before mock-obs.
 	'''
@@ -493,7 +519,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1)
 	pixscale = hdr['CDELT1']	# deg / pix
 	sky_image = hdul[0].data #.byteswap().newbyteorder()   	# byteswap is needed for cv2 blurring
 
-	diskname = filename.replace( data_folder, '' ).replace('_3000um', '').strip('.fits')  	# each one a separate folder
+	diskname = filename.replace( data_folder, '' ).replace(f'_{round(wle*1e6)}um', '').strip('.fits')  	# each one a separate folder
 	os.system( f'mkdir {savedir}{diskname}')
 	os.chdir( savedir + diskname )
 
@@ -527,25 +553,26 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1)
 	plt.close()
 
 
-def generate_mock_obs( filename, RT_wav, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True):
+def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3):
 	'''
 	Call CASA simobserve and simanalyze to produce mock observations of filename.
 	'''
-	prepare_sky_model( filename=filename, data_folder=data_folder, savedir=savedir, damp=damp, monosource=monosource, nRMS=nRMS)
+	prepare_sky_model( filename=filename, data_folder=data_folder, savedir=savedir, damp=damp, monosource=monosource, nRMS=nRMS, wle=wle)
 
 	image_to_process = 'skycut.fits'		# Import fits file
 	ctk.importfits( fitsimage=image_to_process , imagename='skymodel.imag', overwrite=True)
 	ctk.imhead( imagename='skymodel.imag', mode='put', hdkey='bunit', hdvalue='Jy/pixel')		# Edit image header
 
 	# Generate synthetic visibilities
-	diskname = filename.replace( data_folder, '' ).replace(f'_{RT_wav}um', '').strip('.fits')  	# each one a separate folder
+	diskname = filename.replace( data_folder, '' ).replace(f'_{round(wle*1e6)}um', '').strip('.fits')  	# each one a separate folder
 	os.chdir( '../' )
+
 	ctk.simobserve( project=diskname ,
 		skymodel= f'{diskname}/skymodel.imag' ,
 		# indirection='J2000 16h26m26.39-24d24m30.7' , #also used as pointing center
 		setpointings= False,  
 		ptgfile= ptgfile, 
-		incenter= '100GHz' ,
+		incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
 		inwidth = '7.5GHz' ,
 		# mapsize=[ '' ] , # ' ' will fully cover (sky) model
 		antennalist= config_name + '.cfg',
@@ -665,8 +692,8 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 		imsize=[1728,1728],			# lo dice lui boh
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
-		niter=10000, 
-		threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy')                # No CLEANing, just make the residuals image
+		niter=0, )
+		# threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy')                # No CLEANing, just make the residuals image
 	
 	casa_table.open( './bestmod/best_residuals.image' )		# the one created above, in [Jy/beam]
 	res_img = casa_table.getcol('map').squeeze().copy( order='F') 		# residuals				
@@ -711,7 +738,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=40e3, extra_sources=[0,0] ):
+def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=7e3, extra_sources=[0,0], wle=mm3 ):
 	''' Produce UVplots for all the bestfit solutions. '''
 	# uvbin_size = 30e3     # uv-distance bin, units: wle
 
@@ -769,7 +796,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=40e3, ext
 	return bestmod_image, vis_model
 
 
-def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4):
+def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4, wle=mm3):
 	'''
 	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
 	'''
@@ -781,15 +808,15 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
 	nsteps = sampler.get_chain().shape[0]
 	if burnin is None:
-		burnin = nsteps//3
+		burnin = nsteps//2
 	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
 	np.savetxt( f'bestfit_params.txt', bestfit )
 
 	if galargs is None:
-		galargs = get_galargs()
+		galargs = get_galargs( wle=wle)
 	if extra_sources is None:
 		extra_sources = copy_extra_sources( diskname ) if monosource==False else (0,0)
-	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources)		# make the UV plots and save the best model image
+	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle)		# make the UV plots and save the best model image
 	residuals_vis_plot( diskname, mod_vis, T_exp )
 
 	# # best model visual check
@@ -805,7 +832,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 
 
 
-def get_galargs():
+def get_galargs( wle=mm3):
 	u, v, Re_obs, Im_obs, w = np.require( np.loadtxt( f'uvtab.txt', unpack=True), requirements='C')
 	u /= wle
 	v /= wle	# have the baselines in lambda units
@@ -819,13 +846,12 @@ def get_galargs():
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True, nRMS=1.):
+def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True, nRMS=1., wle=mm3):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
-	# projectname = filename.strip( savedir ).strip('_3000um.fits')  	# each one a separate folder
 	os.chdir( savedir + diskname )
-	galargs = get_galargs() 
+	galargs = get_galargs( wle=wle) 
 	extra_sources = copy_extra_sources( diskname, nRMS=nRMS ) if monosource==False else (0,0)		# deal with multiplicity in FoV
 
 	# parameter space domain
@@ -863,7 +889,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False, extra_src=extra_sources )
 	
-	bestfit_plots( diskname, T_exp, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources)
+	bestfit_plots( diskname, T_exp, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources, wle=wle)
 	# os.chdir( '../')
 
 
