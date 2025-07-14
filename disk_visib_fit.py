@@ -52,10 +52,10 @@ if __name__=='__main__':
 		fname = data_folder + folder_wle + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
 
 		generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
-				   data_folder=data_folder + folder_wle, savedir=savedir+folder_wle, ptgfile=ptgfile, wle=wle )
+				   data_folder=data_folder+folder_wle, savedir=savedir+folder_wle, ptgfile=ptgfile, wle=wle )
 
-		# mcmc_regress( args['diskname'], args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-		# 		Ncpu=Ncpu, savedir=savedir+folder_wle, monosource=args['monosrc'], nRMS=1.5, wle=wle)
+		mcmc_regress( args['diskname'], args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
+				Ncpu=Ncpu, savedir=savedir+folder_wle, monosource=args['monosrc'], nRMS=1.5, wle=wle)
 		# os.chdir( savedir+folder_wle + args['diskname'] )
 		# bestfit_plots( args['diskname'], args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle )
 

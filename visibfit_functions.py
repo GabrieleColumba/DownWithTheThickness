@@ -143,7 +143,7 @@ def copy_extra_sources( diskname, nRMS=1 ):
 	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
-	nimg_masked = np.where( noisy_img > thresh, deconvolved, 0)		# keep everything above n*RMS # TODO: try using the entire deconv image (except at centre)
+	nimg_masked = deconvolved # np.where( noisy_img > thresh, deconvolved, 0)		# keep everything above n*RMS # TODO: try using the entire deconv image (except at centre)
 	
 	sources_df = pd.DataFrame( regionprops_table( label_image,
 		properties=('centroid', 'orientation', 'axis_major_length', 'axis_minor_length', 'equivalent_diameter_area'), ) ).rename(
@@ -169,8 +169,8 @@ def copy_extra_sources( diskname, nRMS=1 ):
 
 	# beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
 	# beam_to_pix = ( 3600* np.rad2deg( img_pixscale ) )**2  / beam_area		# to convert the flux from [Jy/beam] to [Jy/pix]
-	nimg_masked[ nimg_masked <= 1e-12 ] = 1e-12			# remove negative values
-	return nimg_masked *1, img_pixscale		# [Jy/pix], [rad/pix]		maybe a DECONVOLUTION would be better here?
+	# nimg_masked[ nimg_masked <= 1e-12 ] = 1e-12			# remove negative values
+	return nimg_masked , img_pixscale		# [Jy/pix], [rad/pix]		maybe a DECONVOLUTION would be better here?
 
 
 def calc_beam_factor( xsrc, gal_mod, dxy):
@@ -738,7 +738,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=7e3, extra_sources=[0,0], wle=mm3 ):
+def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=12e3, extra_sources=[0,0], wle=mm3 ):
 	''' Produce UVplots for all the bestfit solutions. '''
 	# uvbin_size = 30e3     # uv-distance bin, units: wle
 

@@ -14,16 +14,19 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10, 'figure.dpi':220})
 
-T_exp = 3600	# s
+wle = 0.003		# [m]
+T_exp = 3600	# [s]
+folder_wle = f'{round(wle*1e3)}mm/'
+
 # results_dir = f'/scratch/astro/gabriele.columba/results/run_{T_exp}s_2c/'
-results_dir = f'/Users/gcolumba/PostDoc_Mac/PostProc/run_{T_exp}s_2c_mono/'
+results_dir = f'/Users/gcolumba/PostDoc_Mac/PostProc/run_{T_exp}s_2c_mono/' + folder_wle
 truth_path = './Tungs_truths.dat'
 figs_ext = '.png'
 
 Tung_nofit = [29, 43, 63, 72, 75, 82, 83]
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
 
-v_obs = 100 *1e9    # Hz    obs frequency
+v_obs = 299792458.0/wle	# 100 *1e9    # Hz    obs frequency
 pixscale = 9.92e-6      # deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
@@ -323,7 +326,7 @@ if __name__=='__main__':
 		sys.exit()
 	print( len(disklist), 'files found')
 
-	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ).loc[tungslist]	# load my simulation truths file
+	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[tungslist]	# load my simulation truths file
 	paramlist = []
 
 	for fpath in disklist:
