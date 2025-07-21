@@ -590,7 +590,7 @@ def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', 
 		cell= '' , 			# empty string means model cell size is to be used
 		niter = 10000,
 		interactive = False ,
-		threshold = f'{1* analytic_sens(t=T_exp) :.3f}uJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
+		threshold = '5uJy' , # f'{1* analytic_sens(t=T_exp) :.3f}uJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
 		weighting = 'briggs',
 		analyze= True,
 		graphics= 'file')
@@ -650,7 +650,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
 		niter=10000, 	            # CLEANing, is this OK ?
-		threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy',
+		threshold= '5uJy', # f'{1* analytic_sens(t=T_exp) :.3f}uJy',
 		) 
 	
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
