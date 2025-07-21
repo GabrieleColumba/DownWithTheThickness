@@ -4,6 +4,7 @@ import matplotlib as mpl
 import os
 import glob
 import sys
+import argparse
 import pandas as pd
 # import scipy.integrate as si
 import astropy.units as u
@@ -12,20 +13,12 @@ import casatools as cto
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
+from local_variables import *
 plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10, 'figure.dpi':220})
 
-wle = 0.003		# [m]
-T_exp = 3600	# [s]
-folder_wle = f'{round(wle*1e3)}mm/'
-
-# results_dir = f'/scratch/astro/gabriele.columba/results/run_{T_exp}s_2c/'
-results_dir = f'/Users/gcolumba/PostDoc_Mac/PostProc/run_{T_exp}s_2c_mono/' + folder_wle
-truth_path = './Tungs_truths.dat'
-figs_ext = '.png'
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
 
-v_obs = 299792458.0/wle	# 100 *1e9    	# Hz    obs frequency
 pixscale = 9.92063492063492e-6      	# deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
@@ -91,7 +84,7 @@ def plot_opacity():
 	plt.show()
 
 
-def plot_Fv_compare_mod( df, kappa, rdata='sim', Tbb=122):
+def plot_Fv_compare_mod( df, v_obs, kappa, rdata='sim', Tbb=122):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
@@ -111,11 +104,11 @@ def plot_Fv_compare_mod( df, kappa, rdata='sim', Tbb=122):
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( loc='lower right')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + figs_ext , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + fig_ext , bbox_inches='tight')
 	plt.show()
 
 
-def plot_Fv_compare( df, kappa, rdata='sim', Tbb=122):
+def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
@@ -134,7 +127,7 @@ def plot_Fv_compare( df, kappa, rdata='sim', Tbb=122):
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( loc='lower right')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + figs_ext , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + fig_ext , bbox_inches='tight')
 	plt.show()
 	
 
@@ -150,7 +143,7 @@ def thick_sim_inspo( df, kappa, v_obs):
 	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
 	ax.legend( loc='lower right')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + figs_ext , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + fig_ext , bbox_inches='tight')
 	plt.show()
 	
 
@@ -161,7 +154,7 @@ def plot_mass_compare( df):
 	ax.scatter( x=df.M_sim/100, y=df.M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
 	plt.show()
 
 
@@ -177,7 +170,7 @@ def plot_radius_compare( df):
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [au]', ylabel=r'$ R_\mathrm{obs} $ [au]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend()
-	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
 	plt.show()
 
 
@@ -191,7 +184,7 @@ def plot_inc_compare( df):
 	ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
 	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
+	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
 	plt.show()
 
 
@@ -199,7 +192,7 @@ def rms( arr ):
 	return np.sqrt( np.sum( arr**2 ) / len( arr.flatten() ) )
 
 
-def count_flux_sources( diskname, nRMS=5, config_name= 'alma.cycle11.6' ):
+def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
 	'''
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
@@ -315,10 +308,11 @@ def OLD_produce_truths_df():
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
-def main_analysis( Texp, results_dir):
+def main_analysis( Texp, wle, results_dir, config_name):
 	'''
 	Main function. 
 	'''
+	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
 	if disklist == []:    
 		print('NO FILES FOUND, check again the folder path!')
@@ -347,14 +341,14 @@ def main_analysis( Texp, results_dir):
 			R_obs = R_90     # as Tung ?
 
 			F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
-			Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5 )
+			Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
 			
 			# theoretical fully thick disk flux
 			l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 			F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
 
-			k_v =  kappa_empir( v_obs, beta=1.) # kappa    # cm2 / g		# optool (true): 0.54 @3mm and 0.138 @7mm
-			T_avg = 122     # K		Tung default: 122 K
+			k_v =  kappa_empir( v_obs, beta=1.) # kappa    # [cm2 / g]		# optool (true): 0.54 @3mm and 0.138 @7mm
+			T_avg = 122     # [K]		Tung default: 122 K
 
 			M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
 
@@ -366,7 +360,7 @@ def main_analysis( Texp, results_dir):
 			M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
 			epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
 			R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
-			R_obs = (R_obs * dist).to_value( u.au )			# rad to au
+			R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
 			i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
 			L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 			F_sim_thin = M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
@@ -378,11 +372,11 @@ def main_analysis( Texp, results_dir):
 				   ).set_index('source')
 	
 	os.chdir( results_dir )
-	res_df.to_csv( f'analysis_results-{Texp}s.txt', sep='\t')#, float_format='%.2e')
+	res_df.to_csv( f'analysis_results-{Texp}s.txt', sep='\t') #, float_format='%.2e')
 	
 	# k_v = 0.54
 	# plot_opacity()
-	plot_Fv_compare( res_df, k_v )
+	plot_Fv_compare( res_df, v_obs, k_v )
 	# plot_Fv_compare_mod( res_df, k_v )
 	plot_inc_compare( res_df )
 	plot_mass_compare( res_df )
@@ -397,4 +391,18 @@ def main_analysis( Texp, results_dir):
 
 if __name__=='__main__':
 
-	main_analysis()
+	parser = argparse.ArgumentParser()		# parsing the name of the disk file to read
+	parser.add_argument('RT_wavel', type=int, help='obs wavelength (3000 or 7000 [um]) (default: 3000)')
+	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
+	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
+	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
+	args = vars( parser.parse_args() )
+
+	model_comps = '2c' if args['2c'] else 'g+'
+	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
+	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
+	folder_wle = f'{round(wle*1e3)}mm/'
+	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' 		# results directory name
+
+	main_analysis( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
+	# main_analysis( Texp=T_exp, results_dir=results_dir, config_name=config_name)

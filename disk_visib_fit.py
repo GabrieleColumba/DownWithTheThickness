@@ -4,8 +4,6 @@ import glob
 import sys
 from local_variables import *		# file with the local path pointers and cpu settings
 from visibfit_functions import *
-from analysis import main_analysis
-from assess_SNR import assess_SNR
 import argparse
 
 Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples)	
@@ -72,10 +70,5 @@ if __name__=='__main__':
 				Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=1.5, wle=wle)
 
 		# bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir )
-
-	# # finally, analyse the sample retrieved properties
-	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
-	main_analysis( Texp=args['Texp'], results_dir=savedir )
-
 
 

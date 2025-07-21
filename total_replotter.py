@@ -12,7 +12,7 @@ if __name__=='__main__':
 	parser = argparse.ArgumentParser()		# parsing the name of the disk file to read
 	parser.add_argument('diskname', type=str, help='name(s) of the diskNN_xx .fits file (default: None)')
 	parser.add_argument('RT_wavel', type=int, help='obs wavelength (3000um or 7000um) (default: 3000)')
-	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 5000s)')
+	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')

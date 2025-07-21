@@ -4,17 +4,14 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 import os
+import argparse
 import pandas as pd
 import glob
 import sys
 import casatools as cto
 from scipy.optimize import curve_fit
+from local_variables import *
 
-
-T_exp = 3600    # s
-wle = 0.003		# m	
-config_name = 'alma.cycle11.7'
-savedir = '/Users/gcolumba/PostDoc_Mac/PostProc/run_3600s_2c_mono/3mm'		# where the simanalyze products are saved
 
 
 def crop_image( img, centre=None, margins=[100, 100] ):
@@ -125,7 +122,6 @@ def assess_SNR( Texp, wle, results_dir, config_name ):
 		print('NO FILES FOUND, check again the folder path!')
 		sys.exit()
 	# print('Files in the list:\n')
-	# print( repr( fitslist)) 
 	print( len(fitslist), 'files found')
 
 	SNRs = []
@@ -137,34 +133,38 @@ def assess_SNR( Texp, wle, results_dir, config_name ):
 		table = cto.table()
 		table.open( img_tab )
 		img = table.getcol('map').squeeze().copy() 
-		# mpl.use('macosx')
-		# plt.imshow( img.T, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
-		# plt.show()
-		# print( img.shape )
 
 		peak = np.max( crop_image(img, margins=[35,35]) )	# find the peak flux in a region around the centre
 		peak_beam = peak_beam_avg( img, table=table)
 
-		# bkg_patch = img[0:img.shape[0]//3, 0:img.shape[0]//3]	# a third of the img avoiding centre
-		# noise = ( img.std() + bkg_patch.std() ) / 2		# maybe more robust than picking all or just a part
-		# noise = ( rms(img) + rms(bkg_patch) ) / 2
 		# noise = min_bkg_rms( img )		# the minimum rms from bkg patches
-		noise = rms( img )
+		noise = rms( img )					# the rms of the entire image including target source
 
 		snr = peak / noise
-		# SNRs.append( [projectname, f'{snr :.2f}', peak, peak_beam] ) 
 		SNRs.append( [projectname.strip( 'disk' ), snr, peak, peak_beam, noise] )
 		table.close()
 
 	df = pd.DataFrame( SNRs, columns=['source', 'SNR', 'max peak', 'beam peak', 'noise']).set_index('source')
 	os.chdir( results_dir )
 	df.to_csv( f'Peak_SNR_{Texp}s.txt', sep='\t')#, float_format='%.2e')
-	# np.savetxt( savedir + f'Peak-rms_SNR_{T_exp}s.txt', np.array( SNRs).reshape( len(fitslist), -1), fmt='%s %.2f %.3e %.3e' )
-	# dfu = list_under( 0.002, df, 'beam peak')
 	plot_it( df )
+
 
 
 
 if __name__=='__main__':
 
-	assess_SNR( Texp=T_exp, wle=wle, results_dir=savedir, config_name=config_name )
+	parser = argparse.ArgumentParser()		# parsing the name of the disk file to read
+	parser.add_argument('RT_wavel', type=int, help='obs wavelength (3000 or 7000 [um]) (default: 3000)')
+	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
+	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
+	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
+	args = vars( parser.parse_args() )
+
+	model_comps = '2c' if args['2c'] else 'g+'
+	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
+	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
+	folder_wle = f'{round(wle*1e3)}mm/'
+	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' 		# results directory name
+
+	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
