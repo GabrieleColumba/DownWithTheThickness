@@ -6,8 +6,8 @@ from local_variables import *		# file with the local path pointers and cpu setti
 from visibfit_functions import *
 import argparse
 
-Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples)	
-
+# Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples)	
+NOfit = [63, 75]
 
 if __name__=='__main__':
 
@@ -24,10 +24,9 @@ if __name__=='__main__':
 
 	model_comps = '2c' if args['2c'] else 'g+'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
-	# wle = 0.00299792458 if args['RT_wavel']=='3000' else 
 	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
-	savedir = savedir_prefix + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' + folder_wle		# results directory name
+	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/'		# results directory name
 	# config_name = 
 
 	fitslist = sorted( glob.glob( data_folder + folder_wle + '*.fits') )

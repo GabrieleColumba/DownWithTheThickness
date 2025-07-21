@@ -1,3 +1,5 @@
+### ANALYSE THE RESULTS OF MOCKOBS FITTING AND THE RETRIEVED DISK PARAMETERS  
+# # usage example: >>> python DownWithTheThickness/analysis.py 3000 -Texp 3600 -2c -monosrc
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
@@ -16,9 +18,8 @@ from skimage.morphology import closing, footprints
 from local_variables import *
 plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10, 'figure.dpi':220})
 
-
+OKlist = np.array([17, 20, 29, 30, 42, 43, 50, 52, 53, 57, 65, 67, 70, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
-
 pixscale = 9.92063492063492e-6      	# deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
@@ -319,7 +320,7 @@ def main_analysis( Texp, wle, results_dir, config_name):
 		sys.exit()
 	print( len(disklist), 'files found')
 
-	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[tungslist]	# load my simulation truths file
+	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[OKlist]	# load my simulation truths file
 	paramlist = []
 
 	for fpath in disklist:
@@ -327,45 +328,45 @@ def main_analysis( Texp, wle, results_dir, config_name):
 		diskname = fpath.strip( results_dir ).strip('disk')
 		disk_n = int(diskname.strip( '_yzx'))
 		
-		# if disk_n in tungslist:
-		try:
-			# read the bestfit params from file for I0 and sma
-			pars = np.loadtxt( 'bestfit_params.txt')	# galario fits I0 in Jy/sr units
-			I0_d = 10**pars[0]                   		# disk peak intensity  [Jy/sr]
-			sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma  [arcsec --> rad]
-			i_obs = pars[-4]								# disk inclination [deg]
+		if disk_n in OKlist:
+			try:
+				# read the bestfit params from file for I0 and sma
+				pars = np.loadtxt( 'bestfit_params.txt')	# galario fits I0 in Jy/sr units
+				I0_d = 10**pars[0]                   		# disk peak intensity  [Jy/sr]
+				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma  [arcsec --> rad]
+				i_obs = pars[-4]								# disk inclination [deg]
 
-			R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
-			R_90 = R_68 * 1.42                              # 90% radius
-			R_95 = R_68 * 1.62
-			R_obs = R_90     # as Tung ?
+				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
+				R_90 = R_68 * 1.42                              # 90% radius
+				R_95 = R_68 * 1.62
+				R_obs = R_90     # as Tung ?
 
-			F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
-			Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
+				F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
+				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
+				
+				# theoretical fully thick disk flux
+				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
+				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
+
+				k_v =  kappa_empir( v_obs, beta=1.) # kappa    # [cm2 / g]		# optool (true): 0.54 @3mm and 0.138 @7mm
+				T_avg = 122     # [K]		Tung default: 122 K
+
+				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+
+			except: 
+				print('No bestfit params found for ', diskname)
+				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = np.nan
 			
-			# theoretical fully thick disk flux
-			l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
-			F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
+			finally:
+				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
+				epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
+				R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
+				R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
+				i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
+				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
+				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 
-			k_v =  kappa_empir( v_obs, beta=1.) # kappa    # [cm2 / g]		# optool (true): 0.54 @3mm and 0.138 @7mm
-			T_avg = 122     # [K]		Tung default: 122 K
-
-			M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
-
-		except: 
-			print('No bestfit params found for ', diskname)
-			M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = np.nan
-		
-		finally:
-			M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
-			epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
-			R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
-			R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
-			i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
-			L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
-			F_sim_thin = M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
-
-			paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
+				paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
 
 	res_df = pd.DataFrame( paramlist, 
 				   columns=['source', 'R_obs', 'R_sim', 'M_obs', 'M_sim', 'epsilon_M', 'F_obs', 'Fv_c', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
@@ -385,6 +386,8 @@ def main_analysis( Texp, wle, results_dir, config_name):
 
 	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	# thick_sim_inspo( truths_total, 0.54, v_obs)
+
+
 
 
 

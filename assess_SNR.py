@@ -1,5 +1,5 @@
 # # EVALUATE THE SNR OF THE MOCK OBSERVATIONS FOR THE GIVEN EXPOSURE TIME T_exp. 
-
+# # usage example: >>> python DownWithTheThickness/assess_SNR.py 3000 -Texp 3600 -2c -monosrc
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
