@@ -23,15 +23,13 @@ results_dir = f'/Users/gcolumba/PostDoc_Mac/PostProc/run_{T_exp}s_2c_mono/' + fo
 truth_path = './Tungs_truths.dat'
 figs_ext = '.png'
 
-Tung_nofit = [29, 43, 63, 72, 75, 82, 83]
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
 
-v_obs = 299792458.0/wle	# 100 *1e9    # Hz    obs frequency
-pixscale = 9.92e-6      # deg
+v_obs = 299792458.0/wle	# 100 *1e9    	# Hz    obs frequency
+pixscale = 9.92063492063492e-6      	# deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
 au_to_rad = 1 / dist.to_value(u.au)
-# arcsec_to_au = (dist * u.pc).to_value( u.au) 
 
 
 def gauss_flux_tot( I0, sigma, Rmax):
@@ -173,11 +171,12 @@ def plot_radius_compare( df):
 	to_as = 1 # np.rad2deg(1) * 3600		# from rad to arcsec
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	ax.axline( xy1=(10, 10), slope=1, ls='--', c='gray' )		# y=x identity
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs/1.42 *to_as, marker='o', c='r', label='$R_{68%}$', alpha=0.6)
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs *1   *to_as, marker='o', c='g', label='$R_{90%}$', alpha=0.8)		# observed radii
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs*1.14 *to_as, marker='o', c='b', label='$R_{95%}$', alpha=0.6)
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs/1.42 *to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.4)
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs *1   *to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.8)		# observed radii
+	ax.scatter( x=df.R_sim *to_as, y=df.R_obs*1.14 *to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.4)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [au]', ylabel=r'$ R_\mathrm{obs} $ [au]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	ax.legend()
 	fig.savefig( ptitle + figs_ext , bbox_inches='tight')
 	plt.show()
 
@@ -316,10 +315,10 @@ def OLD_produce_truths_df():
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
-
-
-if __name__=='__main__':
-
+def main_analysis( Texp, results_dir):
+	'''
+	Main function. 
+	'''
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
 	if disklist == []:    
 		print('NO FILES FOUND, check again the folder path!')
@@ -334,52 +333,52 @@ if __name__=='__main__':
 		diskname = fpath.strip( results_dir ).strip('disk')
 		disk_n = int(diskname.strip( '_yzx'))
 		
-		if disk_n in tungslist:
-			try:
-				# read the bestfit params from file for I0 and sma
-				pars = np.loadtxt( 'bestfit_params.txt')	# galario fits I0 in Jy/sr units
-				I0_d = 10**pars[0]                   		# disk peak intensity  [Jy/sr]
-				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma  [arcsec --> rad]
-				i_obs = pars[-4]								# disk inclination [deg]
+		# if disk_n in tungslist:
+		try:
+			# read the bestfit params from file for I0 and sma
+			pars = np.loadtxt( 'bestfit_params.txt')	# galario fits I0 in Jy/sr units
+			I0_d = 10**pars[0]                   		# disk peak intensity  [Jy/sr]
+			sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma  [arcsec --> rad]
+			i_obs = pars[-4]								# disk inclination [deg]
 
-				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
-				R_90 = R_68 * 1.42                              # 90% radius
-				R_95 = R_68 * 1.62
-				R_obs = R_90     # as Tung ?
+			R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
+			R_90 = R_68 * 1.42                              # 90% radius
+			R_95 = R_68 * 1.62
+			R_obs = R_90     # as Tung ?
 
-				F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
-				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5 )
-				
-				# theoretical fully thick disk flux
-				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
-				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
-
-				k_v =  kappa_empir( v_obs, beta=1.) # kappa    # cm2 / g		# optool (true): 0.54 @3mm and 0.138 @7mm
-				T_avg = 122     # K		Tung default: 122 K
-
-				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
-
-			except: 
-				print('No bestfit params found for ', diskname)
-				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = np.nan
+			F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
+			Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5 )
 			
-			finally:
-				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
-				epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
-				R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
-				R_obs = (R_obs * dist).to_value( u.au )			# rad to au
-				i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
-				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
-				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
+			# theoretical fully thick disk flux
+			l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
+			F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
 
-				paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
+			k_v =  kappa_empir( v_obs, beta=1.) # kappa    # cm2 / g		# optool (true): 0.54 @3mm and 0.138 @7mm
+			T_avg = 122     # K		Tung default: 122 K
+
+			M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+
+		except: 
+			print('No bestfit params found for ', diskname)
+			M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = np.nan
+		
+		finally:
+			M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
+			epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
+			R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
+			R_obs = (R_obs * dist).to_value( u.au )			# rad to au
+			i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
+			L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
+			F_sim_thin = M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
+
+			paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
 
 	res_df = pd.DataFrame( paramlist, 
 				   columns=['source', 'R_obs', 'R_sim', 'M_obs', 'M_sim', 'epsilon_M', 'F_obs', 'Fv_c', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
 				   ).set_index('source')
 	
 	os.chdir( results_dir )
-	res_df.to_csv( f'analysis_results-{T_exp}s.txt', sep='\t')#, float_format='%.2e')
+	res_df.to_csv( f'analysis_results-{Texp}s.txt', sep='\t')#, float_format='%.2e')
 	
 	# k_v = 0.54
 	# plot_opacity()
@@ -392,3 +391,10 @@ if __name__=='__main__':
 
 	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	# thick_sim_inspo( truths_total, 0.54, v_obs)
+
+
+
+
+if __name__=='__main__':
+
+	main_analysis()

@@ -22,9 +22,8 @@ from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
-# os.environ["OMP_NUM_THREADS"] = "1"
 
-mm3 = 0.00299792458		# wavelength [metres]
+mm3 = 0.003		# wavelength [metres]
 
 def compare_gauss_plumm():
 	rarr = np.linspace(0, 6, 600)
@@ -441,7 +440,7 @@ def cancel_extra_sources( skymodel, nRMS=1, figure=False ):
 	bw = closing( sky_image > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
-	sky_masked = np.where( sky_image > thresh, noise_lev, sky_image)		# keep everything below n*RMS 	# keep thresh or RMS ?
+	sky_masked = np.where( sky_image > thresh, thresh, sky_image)		# keep everything below n*RMS 	# keep thresh or RMS ?
 	# sky_masked = np.clip( sky_image, a_max= 3* min_bkg_rms( sky_image), a_min=None)	# this cancels more but creates gradini
 
 	sources_df = pd.DataFrame( regionprops_table( label_image,
@@ -549,7 +548,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	plt.imshow(  np.clip( skycut[:, ::-1 ], a_min=1e-8, a_max=None), 		# 1e-8 Jy/pix should be a fair rms low bound
 			origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
 	plt.axis( False )
-	plt.savefig( 'sky_model' + fig_ext, bbox_inches='tight')
+	plt.savefig( 'sky_model' + fig_ext, bbox_inches='tight', dpi=200)
 	plt.close()
 
 
@@ -647,7 +646,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 		vis=MSname,
 		imagename='./bestmod/best_model',
 		datacolumn='corrected',  	# Use the corrected_data where we stored the model visibilities
-		imsize=[1728,1728],			# lo dice lui boh
+		imsize=noisy_img.shape,			# lo dice lui boh 1728 config 6
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
 		niter=10000, 	            # CLEANing, is this OK ?
@@ -689,7 +688,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 		vis=MSname,
 		imagename='./bestmod/best_residuals',
 		datacolumn='corrected',  	# Use the residuals
-		imsize=[1728,1728],			# lo dice lui boh
+		imsize=noisy_img.shape,			# lo dice lui boh
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
 		niter=0, )
@@ -712,15 +711,15 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 	# fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	# plt.close()
 
-	ptitle = 'Residuals_lin (vis)'
-	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model  
-	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	ax.axis( 'off' )
-	fig.colorbar( ci, ax=ax, label='RMS units')
-	# # plt.show()
-	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
-	plt.close()
+	# ptitle = 'Residuals_lin (vis)'
+	# fig, ax = plt.subplots( figsize=(6,6))  
+	# ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model  
+	# ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
+	# ax.axis( 'off' )
+	# fig.colorbar( ci, ax=ax, label='RMS units')
+	# # # plt.show()
+	# fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
+	# plt.close()
 	return
 
 
@@ -738,7 +737,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=12e3, extra_sources=[0,0], wle=mm3 ):
+def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, extra_sources=[0,0], wle=mm3 ):
 	''' Produce UVplots for all the bestfit solutions. '''
 	# uvbin_size = 30e3     # uv-distance bin, units: wle
 
@@ -796,10 +795,11 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=12e3, ext
 	return bestmod_image, vis_model
 
 
-def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4, wle=mm3):
+def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4, wle=mm3, savedir=''):
 	'''
 	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
 	'''
+	os.chdir( savedir + diskname )
 	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
 	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
 	labs_mc = labels_2c if two_comp else labels_gauss
@@ -825,7 +825,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	plt.title('galario best model')
 	plt.axis(False)
 	#plt.show()
-	plt.savefig( f'galario_sky-model_bestfit' + fig_ext, bbox_inches='tight')
+	plt.savefig( f'galario_sky-model_bestfit' + fig_ext, bbox_inches='tight', dpi=200)
 	plt.close()
 	plt.close()
 	return print( '\n Best-fit plots and images saved.\n')
@@ -856,7 +856,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 
 	# parameter space domain
 	p_ranges_2 = np.array([[8., 15],		# Log10( I0disk )	[Log(Jy/sr)]
-						[2., 12.],		# Log10( IOenvelope)   /// f (lum fraction partition) []
+						[0., 12.],		# Log10( IOenvelope)   /// f (lum fraction partition) []
 						[1e-5, .7],		# sigma i.e. sma [arcsec]
 						[1e-3, 6],		# Ri [arcsec]
 						# [0.5, 10],		# Rout [arcsec]
@@ -890,12 +890,6 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 			two_comp=two_components, append=False, extra_src=extra_sources )
 	
 	bestfit_plots( diskname, T_exp, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources, wle=wle)
-	# os.chdir( '../')
-
-
-
-
-
 
 
 

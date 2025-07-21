@@ -11,10 +11,10 @@ import casatools as cto
 from scipy.optimize import curve_fit
 
 
-
 T_exp = 3600    # s
-config_name = 'alma.cycle11.6'
-savedir = '/Users/gcolumba/PostDoc_Mac/PostProc/run_3600s_2c_mono/'		# where the simanalyze products are saved
+wle = 0.003		# m	
+config_name = 'alma.cycle11.7'
+savedir = '/Users/gcolumba/PostDoc_Mac/PostProc/run_3600s_2c_mono/3mm'		# where the simanalyze products are saved
 
 
 def crop_image( img, centre=None, margins=[100, 100] ):
@@ -22,7 +22,6 @@ def crop_image( img, centre=None, margins=[100, 100] ):
 	if centre is None:      	# use the middle of the image
 		centre = (np.array( img.shape)/2 ).astype(int)
 	return img[ centre[0] - margins[0] : centre[0] + margins[0] +1, centre[1] - margins[1] : centre[1] + margins[1] +1]
-
 
 
 def analytic_sens( t, a, b, c):
@@ -112,16 +111,16 @@ def plot_it(df):
 	ax.axhline( y=10, color='gray', ls='--')
 	ax.axhline( y=100, color='gray', ls='-')
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( savedir + 'SNR_plot.pdf' , bbox_inches='tight')
+	fig.savefig( 'SNR_plot.pdf' , bbox_inches='tight', dpi=220)
 	plt.show()
 
 
 
-
-if __name__=='__main__':
-
-
-	fitslist = sorted( glob.glob( savedir + 'disk*') )
+def assess_SNR( Texp, wle, results_dir, config_name ):
+	'''
+	Main function
+	'''
+	fitslist = sorted( glob.glob( results_dir + 'disk*') )
 	if fitslist == []:    
 		print('NO FILES FOUND, check again the folder path!')
 		sys.exit()
@@ -133,8 +132,8 @@ if __name__=='__main__':
 
 	for fname in fitslist:
 
-		projectname = fname.strip( savedir ).strip('_3000um.fits')  	# each one a separate folder
-		img_tab = f'{savedir}{projectname}/{projectname}.{config_name}.noisy.image'		# cleaned simanalyze image
+		projectname = fname.replace( results_dir, '' ).replace( f'_{round(wle*1e6)}um', '').strip('.fits')  	# each one a separate folder
+		img_tab = f'{results_dir}{projectname}/{projectname}.{config_name}.noisy.image'		# cleaned simanalyze image
 		table = cto.table()
 		table.open( img_tab )
 		img = table.getcol('map').squeeze().copy() 
@@ -157,10 +156,15 @@ if __name__=='__main__':
 		SNRs.append( [projectname.strip( 'disk' ), snr, peak, peak_beam, noise] )
 		table.close()
 
-	
 	df = pd.DataFrame( SNRs, columns=['source', 'SNR', 'max peak', 'beam peak', 'noise']).set_index('source')
-	df.to_csv( savedir + f'Peak_rough-rms_SNR_{T_exp}s.txt', sep='\t')#, float_format='%.2e')
+	os.chdir( results_dir )
+	df.to_csv( f'Peak_SNR_{Texp}s.txt', sep='\t')#, float_format='%.2e')
 	# np.savetxt( savedir + f'Peak-rms_SNR_{T_exp}s.txt', np.array( SNRs).reshape( len(fitslist), -1), fmt='%s %.2f %.3e %.3e' )
-
 	# dfu = list_under( 0.002, df, 'beam peak')
 	plot_it( df )
+
+
+
+if __name__=='__main__':
+
+	assess_SNR( Texp=T_exp, wle=wle, results_dir=savedir, config_name=config_name )

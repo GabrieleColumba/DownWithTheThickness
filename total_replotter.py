@@ -1,12 +1,10 @@
-# # # Full pipeline to mock obs + galario fit. 
-
+# # # Plot again the bestfit figures for the entire sample 
 import glob
 import sys
 from local_variables import *		# file with the local path pointers and cpu settings
 from visibfit_functions import *
 import argparse
 
-Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples)	
 
 
 if __name__=='__main__':
@@ -20,7 +18,11 @@ if __name__=='__main__':
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )
 
-	# if args['diskname'] == 'all':
+	model_comps = '2c' if args['2c'] else 'g+'
+	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
+	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
+	folder_wle = f'{round(wle*1e3)}mm/'
+	savedir = savedir_prefix + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' + folder_wle		# results directory name
 
 	fitslist = sorted( glob.glob( savedir + 'disk*') )
 	print( len(fitslist), 'files found')
@@ -32,7 +34,7 @@ if __name__=='__main__':
 			diskname = fname.replace( savedir, '' )
 			try:
 				os.chdir( savedir + diskname )
-				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4 )
+				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir )
 			except: print( 'skipping', diskname)
 
 
