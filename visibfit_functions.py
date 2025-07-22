@@ -500,12 +500,16 @@ def generate_skymodel( like_filename, data_folder='/Users/gcolumba/PostDoc_Mac/P
 	fits.writeto( data_folder + 'disk04test00_xy_3000um.fits', data=arr, header=hdr, overwrite=True)
 
 
-def analytic_sens( t, a=653.835, b=0.5, c=-0.02):
+def analytic_sensitivity( t):
 	'''
-	Analytical formula for the expected rms based on exposure time t. Defaults fitted from ALMA calculator.
-	t in seconds, the resulting sensitivity (rms) is in uJy.
+	Analytical formula for the expected point-source sensitivity based on exposure time t. Based on ALMA Handbook (except w factor 0.5 as it does not agree with online tool).
+	t in seconds, the resulting sensitivity (rms) is in mJy.
 	'''
-	return a * t**(-b) + c
+	T_sys = 74.262
+	A_eff = 113.1 * 0.715	# [m^2]		(0.71 for band 3 and 0.72 for band 1)
+	f = 0		# at DEC = -24°
+	sig_ps = 2 * 1.380649e-23 * T_sys / ( 0.96*0.88* A_eff * (1 - f) * np.sqrt( 43 * 42 * 2 * 7.5e9 * t) )	# continuum obs with dual pol assumed
+	return sig_ps / 1e-29 		# [mJy]
 
 
 def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1, wle=mm3):
@@ -590,7 +594,7 @@ def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', 
 		cell= '' , 			# empty string means model cell size is to be used
 		niter = 10000,
 		interactive = False ,
-		threshold = '5uJy' , # f'{1* analytic_sens(t=T_exp) :.3f}uJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
+		threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
 		weighting = 'briggs',
 		analyze= True,
 		graphics= 'file')
@@ -650,13 +654,14 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
 		weighting='briggs',
 		niter=10000, 	            # CLEANing, is this OK ?
-		threshold= '5uJy', # f'{1* analytic_sens(t=T_exp) :.3f}uJy',
+		nsigma=1,
+		# threshold= '5uJy', # f'{1* analytic_sens(t=T_exp) :.3f}uJy',
 		) 
 	
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
 	best_img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
 	casa_table.close()
-	ptitle = 'Bestfit_model' 
+	ptitle = 'Bestfit model' 
 	fig, ax = plt.subplots( figsize=(6,6))  
 	ci = ax.imshow( best_img.T , origin='lower', cmap='gnuplot2', norm=mpl.colors.LogNorm( vmin=rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
@@ -667,7 +672,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 	plt.close()
 
 	res_hand = (noisy_img - best_img ) / rms( noisy_img)		# " A MANO "
-	ptitle = 'Bestfit_residuals'
+	ptitle = 'Bestfit residuals'
 	fig, ax = plt.subplots( figsize=(6,6))  
 	ci = ax.imshow( res_hand.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model 
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
@@ -682,34 +687,24 @@ def residuals_vis_plot( diskname, model_vis, T_exp):
 	casa_table.flush()
 	casa_table.close()
 
-	ctk.clearcal( vis=MSname )		# copy DATA (mockobs) to CORR_DATA column before uvsub computes the residuals
-	ctk.uvsub( vis= MSname )		# compute the RESIDUALS = CORR_DATA - MODEL and puts them in CORRECTED_DATA column
-	ctk.tclean(		# image the residuals !
-		vis=MSname,
-		imagename='./bestmod/best_residuals',
-		datacolumn='corrected',  	# Use the residuals
-		imsize=noisy_img.shape,			# lo dice lui boh
-		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
-		weighting='briggs',
-		niter=0, )
-		# threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy')                # No CLEANing, just make the residuals image
+	# ctk.clearcal( vis=MSname )		# copy DATA (mockobs) to CORR_DATA column before uvsub computes the residuals
+	# ctk.uvsub( vis= MSname )		# compute the RESIDUALS = CORR_DATA - MODEL and puts them in CORRECTED_DATA column
+	# ctk.tclean(		# image the residuals !
+	# 	vis=MSname,
+	# 	imagename='./bestmod/best_residuals',
+	# 	datacolumn='corrected',  	# Use the residuals
+	# 	imsize=noisy_img.shape,			# lo dice lui boh
+	# 	cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
+	# 	weighting='briggs',
+	# 	niter=0, )
+	# 	# threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy')                # No CLEANing, just make the residuals image
 	
-	casa_table.open( './bestmod/best_residuals.image' )		# the one created above, in [Jy/beam]
-	res_img = casa_table.getcol('map').squeeze().copy( order='F') 		# residuals				
-	casa_table.close()
-	res_n = res_img / rms( noisy_img )	        # residuals in RMS ratio of the full size img!
+	# casa_table.open( './bestmod/best_residuals.image' )		# the one created above, in [Jy/beam]
+	# res_img = casa_table.getcol('map').squeeze().copy( order='F') 		# residuals				
+	# casa_table.close()
+	# res_n = res_img / rms( noisy_img )	        # residuals in RMS ratio of the full size img!
 	# lim = np.quantile( res_n, [0.05, 0.95] )
 	# np.save( './best_model/' + 'residuals_n', res_n.T )
-
-	# ptitle = 'Residuals_log'
-	# fig, ax = plt.subplots( figsize=(6,6))  
-	# ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.SymLogNorm( linthresh=1 , vmax= 10, vmin=-10) )    # transpose to have as sky model    
-	# ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	# ax.axis( 'off' )
-	# fig.colorbar( ci, ax=ax, label='RMS units')
-	# # plt.show()
-	# fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
-	# plt.close()
 
 	# ptitle = 'Residuals_lin (vis)'
 	# fig, ax = plt.subplots( figsize=(6,6))  
@@ -889,7 +884,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False, extra_src=extra_sources )
 	
-	bestfit_plots( diskname, T_exp, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources, wle=wle)
+	bestfit_plots( diskname, T_exp, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources, wle=wle, savedir=savedir)
 
 
 
