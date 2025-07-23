@@ -24,6 +24,7 @@ pixscale = 9.92063492063492e-6      	# deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
 au_to_rad = 1 / dist.to_value(u.au)
+au_to_as = 1 / dist.to_value(u.au) * 180 / np.pi * 3600		# from au to arcsec
 
 
 def gauss_flux_tot( I0, sigma, Rmax):
@@ -62,6 +63,14 @@ def thick_flux( v, d, r_max, l_star):
 	B_v = planck_bbody( v, T= temp_profile_Tung( lum=l_star, r=r_arr.to_value(u.au) ) )
 	F_v = 1 / d.cgs.value**2 * np.sum( B_v * 2 * np.pi * r_arr.cgs.value * dr.cgs.value )	# [cgs: erg/s/cm2/Hz]
 	return F_v * 1e23		# [Jy]
+
+
+def alma_resolution( wle, config_name):
+	'''Return the resolution [arcsec] given the lambda [m] and the config.'''
+	L80_dict = {'6':1172.5, '7':1673.1, '8':3527.3 , '9':6482.6}	# 80 percentile baselines lenght [m]
+	C_number = config_name[-1]		# take the config number
+	theta_res = 0.574 * wle / L80_dict[ C_number ]		# [rad]
+	return theta_res * 180 / np.pi * 3600	# [arcsec]
 
 
 def plot_opacity():
@@ -118,8 +127,8 @@ def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122):
 	
 	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
 
-	ptitle = 'Flux_thickness'
-	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
+	ptitle = 'Flux thickness'
+	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
 	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
 	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
@@ -149,8 +158,8 @@ def thick_sim_inspo( df, kappa, v_obs):
 	
 
 def plot_mass_compare( df):
-	ptitle = 'Mass_comparison'
-	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
+	ptitle = 'Mass comparison'
+	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )		# y=x identity
 	ax.scatter( x=df.M_sim/100, y=df.M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
@@ -159,16 +168,17 @@ def plot_mass_compare( df):
 	plt.show()
 
 
-def plot_radius_compare( df):
-	'''Assuming R_obs is R_90 in au. '''
-	ptitle = 'Radius_comparison'
-	to_as = 1 # np.rad2deg(1) * 3600		# from rad to arcsec
-	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
-	ax.axline( xy1=(10, 10), slope=1, ls='--', c='gray' )		# y=x identity
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs/1.42 *to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.4)
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs *1   *to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.8)		# observed radii
-	ax.scatter( x=df.R_sim *to_as, y=df.R_obs*1.14 *to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.4)
-	ax.set( xlabel= r'$ R_\mathrm{sim} $ [au]', ylabel=r'$ R_\mathrm{obs} $ [au]' , xscale='log', yscale='log', title=ptitle )
+def plot_radius_compare( df, res_limit):
+	'''Assuming R_obs is R_90, in [au]. '''
+	ptitle = 'Radius comparison'
+	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
+	ax.fill_between( [0.01, res_limit, 10], y1=[10, 10, res_limit], y2=0.01, step='pre', facecolor='gray', alpha=0.16) #, label='resolution limit'  )
+	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
+	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
+	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1   *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.8)		# observed radii
+	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
+	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
+		 title=ptitle, xlim=[0.03,2.5], ylim=[0.03, 2.5], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
@@ -179,8 +189,8 @@ def plot_inc_compare( df):
 	'''Assuming inc in [deg]. '''
 	inc = df.i_sim.copy() 
 	inc[ inc>= 90] = inc - 90
-	ptitle = 'Inclination_comparison'
-	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
+	ptitle = 'Inclination comparison'
+	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
 	ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
 	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', title=ptitle )
@@ -191,6 +201,18 @@ def plot_inc_compare( df):
 
 def rms( arr ):
 	return np.sqrt( np.sum( arr**2 ) / len( arr.flatten() ) )
+
+def min_bkg_rms( image):
+	'''Find the bkg patch with the lowest rms as a noise, comparing four quadrants around the centre.'''
+	npix = image.shape[0]
+	bkg_rms = []
+	for i in [1,3]:
+		for j in [1,3]:
+			bkg_patch = crop_image( image, centre=[npix//4 * i, npix//4 * j], margins=[npix//6, npix//6] )
+			bkg_rms.append( rms(bkg_patch) )
+			# plt.imshow( bkg_patch, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
+			# plt.show()
+	return min( min(bkg_rms), rms(image) )
 
 
 def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
@@ -311,7 +333,7 @@ def OLD_produce_truths_df():
 
 def main_analysis( Texp, wle, results_dir, config_name):
 	'''
-	Main function. 
+	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
 	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
@@ -381,11 +403,99 @@ def main_analysis( Texp, wle, results_dir, config_name):
 	# plot_Fv_compare_mod( res_df, k_v )
 	plot_inc_compare( res_df )
 	plot_mass_compare( res_df )
-	plot_radius_compare( res_df )
+	theta = alma_resolution( wle=wle, config_name=config_name)
+	plot_radius_compare( res_df, theta )
 	thick_sim_inspo( truths_df, 0.54, v_obs)
 
 	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	# thick_sim_inspo( truths_total, 0.54, v_obs)
+
+
+
+
+def crop_image( img, centre=None, margins=[100, 100] ):
+	'''Select a subimage of margins pixels around the centre (odd size).'''
+	if centre is None:      	# use the middle of the image
+		centre = (np.array( img.shape)/2 ).astype(int)
+	return img[ centre[0] - margins[0] : centre[0] + margins[0] +1, centre[1] - margins[1] : centre[1] + margins[1] +1]
+
+def circular_region( arr, radius, centre=None):
+	'''
+	Apply a circular mask to arr. Radius in pixel.'''
+	ydim, xdim = arr.shape
+	if centre is None:      # use the middle of the image
+		centre = ( int(xdim/2), int(ydim/2) )
+
+	yy, xx = np.ogrid[:ydim, :xdim]     # broadcasts to a full grid
+	d = np.sqrt( (xx - centre[0])**2 + (yy - centre[1])**2 )
+	return d < radius
+
+
+def peak_beam_avg( image, table):
+	'''
+	Compute the average in one beam of the cleaned image around the source peak.
+	'''
+	pixscale = np.rad2deg( abs( table.getkeyword('coords') ['direction0']['cdelt'][0] ) ) * 3600		# arcsec/pix
+	a = table.getkeyword('imageinfo') ['restoringbeam']['major']['value']	# Beam sma, arcsec
+	b = table.getkeyword('imageinfo') ['restoringbeam']['minor']['value']	# beam minor axis, arcsec
+	r_beam = (a + b) * .5 / pixscale		# avg beam radius, in pixels
+	peak_idx = np.unravel_index( np.argmax( crop_image(image, margins=[50,50]) ), shape=(101,101) )
+	delta_centre = np.array(peak_idx ) - [50,50]	# offsets of the photocentre
+	peak_centre = np.array( image.shape ) / 2 + np.roll( delta_centre, 1) 	# roll to put correct x and y offset in full image
+	beam_avg = np.nanmean( image[circular_region( image, r_beam, peak_centre)] )
+	return beam_avg
+
+
+def plot_SNR( df ):
+
+	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
+	dff = df.reset_index()
+	dff.plot( xticks=dff.index, rot=90, logy=True, ax=ax, marker='o')
+	ax.set_xticklabels( df.index)
+	# ax.axhline( y=[0.002], color='gray', ls=':')
+	ax.axhline( y=10, color='gray', ls='--')
+	ax.axhline( y=100, color='gray', ls='-')
+	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	fig.savefig( 'SNR_plot' + fig_ext, bbox_inches='tight')
+	plt.show()
+
+
+
+def assess_SNR( Texp, wle, results_dir, config_name ):
+	'''
+	Evaluate the SNR of the cleaned image across the entire sample in results_dir. 
+	'''
+	fitslist = sorted( glob.glob( results_dir + 'disk*') )
+	if fitslist == []:    
+		print('NO FILES FOUND, check again the folder path!')
+		sys.exit()
+	# print('Files in the list:\n')
+	print( len(fitslist), 'files found')
+
+	SNRs = []
+
+	for fname in fitslist:
+
+		projectname = fname.replace( results_dir, '' ).replace( f'_{round(wle*1e6)}um', '').strip('.fits')  	# each one a separate folder
+		img_tab = f'{results_dir}{projectname}/{projectname}.{config_name}.noisy.image'		# cleaned simanalyze image
+		table = cto.table()
+		table.open( img_tab )
+		img = table.getcol('map').squeeze().copy() 
+
+		peak = np.max( crop_image(img, margins=[35,35]) )	# find the peak flux in a region around the centre
+		peak_beam = peak_beam_avg( img, table=table)
+
+		noise = min_bkg_rms( img )		# the minimum rms from bkg patches
+		# noise = rms( img )					# the rms of the entire image including target source
+
+		snr = peak_beam / noise
+		SNRs.append( [projectname.strip( 'disk' ), snr, peak, peak_beam, noise] )
+		table.close()
+
+	df = pd.DataFrame( SNRs, columns=['source', 'SNR', 'max peak', 'beam peak', 'noise']).set_index('source')
+	os.chdir( results_dir )
+	df.to_csv( f'Peak-beam_SNR_{Texp}s.txt', sep='\t') #, float_format='%.2e')
+	plot_SNR( df )
 
 
 
@@ -407,5 +517,5 @@ if __name__=='__main__':
 	folder_wle = f'{round(wle*1e3)}mm/'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' 		# results directory name
 
+	assess_SNR(    Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
 	main_analysis( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
-	# main_analysis( Texp=T_exp, results_dir=results_dir, config_name=config_name)
