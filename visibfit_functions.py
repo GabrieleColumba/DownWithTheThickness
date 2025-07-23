@@ -124,7 +124,7 @@ def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	return target_model, chi2, vis_model
 
 
-def copy_extra_sources( diskname, nRMS=1 ):
+def copy_extra_sources( diskname, nRMS=1.5 ):
 	'''
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
@@ -142,7 +142,7 @@ def copy_extra_sources( diskname, nRMS=1 ):
 	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
-	nimg_masked = deconvolved # np.where( noisy_img > thresh, deconvolved, 0)		# keep everything above n*RMS # TODO: try using the entire deconv image (except at centre)
+	nimg_masked = deconvolved.copy() # np.where( noisy_img > thresh, deconvolved, 0)		# keep everything above n*RMS or take the full deconvolution
 	
 	sources_df = pd.DataFrame( regionprops_table( label_image,
 		properties=('centroid', 'orientation', 'axis_major_length', 'axis_minor_length', 'equivalent_diameter_area'), ) ).rename(
@@ -155,21 +155,21 @@ def copy_extra_sources( diskname, nRMS=1 ):
 	nimg_masked[ miny:maxy , minx:maxx] = 0			# zeros on the entire target rectangle (envelopes should be safe then)
 
 	if (nimg_masked > 0).any():	
-		fig, ax = plt.subplots( figsize=(8, 8))		# diagnostic figure
-		diag_img = np.where( noisy_img > thresh, noisy_img, np.nan)
-		diag_img[ miny:maxy , minx:maxx] = np.nan
-		ax.imshow( diag_img	, origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
+		fig, ax = plt.subplots( figsize=(7, 7))		# diagnostic figure
+		# diag_img = np.where( noisy_img > thresh, noisy_img, np.nan)
+		# diag_img[ miny:maxy , minx:maxx] = np.nan
+		beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
+		smooth_r = ( beam_area / np.pi )**0.5 / np.rad2deg( img_pixscale )/3600		# smoothing radius in [pix]
+		diag_img = snd.gaussian_filter( nimg_masked, sigma=smooth_r )
+		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )	# use noisy_img just for diagnostic plot
 		ax.set_axis_off()
-		fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=400)
+		fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=200)
 		plt.close()
 	else: 
 		print( '\nNo extra sources found in the image!\n' )
-		return 0, img_pixscale
+		return (0, img_pixscale)
 
-	# beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
-	# beam_to_pix = ( 3600* np.rad2deg( img_pixscale ) )**2  / beam_area		# to convert the flux from [Jy/beam] to [Jy/pix]
-	# nimg_masked[ nimg_masked <= 1e-12 ] = 1e-12			# remove negative values
-	return nimg_masked , img_pixscale		# [Jy/pix], [rad/pix]		maybe a DECONVOLUTION would be better here?
+	return nimg_masked, img_pixscale		# [Jy/pix], [rad/pix]
 
 
 def calc_beam_factor( xsrc, gal_mod, dxy):
