@@ -124,7 +124,7 @@ def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	return target_model, chi2, vis_model
 
 
-def copy_extra_sources( diskname, nRMS=1.5 ):
+def copy_extra_sources( diskname, nRMS=1.5, config_name='' ):
 	'''
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
@@ -191,7 +191,7 @@ def calc_beam_factor( xsrc, gal_mod, dxy):
 	return np.nanmean( ratio )		# mean ratio of the source in the galario model to the CASA noisy image
 
 
-def locate_multi_sources( diskname ):
+def locate_multi_sources( diskname, config_name ):
 	'''
 	Determine the number, position and approximate size of multiple sources in the noisy images.
 	'''
@@ -556,7 +556,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	plt.close()
 
 
-def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3):
+def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3, config_name=''):
 	'''
 	Call CASA simobserve and simanalyze to produce mock observations of filename.
 	'''
@@ -629,7 +629,7 @@ def min_bkg_rms( image):
 	return min( min(bkg_rms), rms(image) )
 
 
-def residuals_vis_plot( diskname, model_vis, T_exp):
+def residuals_vis_plot( diskname, model_vis, T_exp, config_name):
 	'''
 	Calculate the residuals between the visibilities of the mock observations and the bestfit model (galario + multisource).
 	'''
@@ -732,7 +732,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, extra_sources=[0,0], wle=mm3 ):
+def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, extra_sources=[0,0], wle=mm3, config_name='' ):
 	''' Produce UVplots for all the bestfit solutions. '''
 	# uvbin_size = 30e3     # uv-distance bin, units: wle
 
@@ -790,7 +790,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, ext
 	return bestmod_image, vis_model
 
 
-def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, burnin=None, walksigma=4, wle=mm3, savedir=''):
+def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, nRMS=1.5, burnin=None, walksigma=4, wle=mm3, savedir='', config_name=''):
 	'''
 	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
 	'''
@@ -810,9 +810,9 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
 	if extra_sources is None:
-		extra_sources = copy_extra_sources( diskname ) if monosource==False else (0,0)
-	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle)		# make the UV plots and save the best model image
-	residuals_vis_plot( diskname, mod_vis, T_exp )
+		extra_sources = copy_extra_sources( diskname, nRMS, config_name ) if monosource==False else (0,0)
+	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle, config_name=config_name)
+	residuals_vis_plot( diskname, mod_vis, T_exp, config_name )
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
@@ -841,13 +841,13 @@ def get_galargs( wle=mm3):
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True, nRMS=1., wle=mm3):
+def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True, nRMS=1.5, wle=mm3, config_name=''):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
 	os.chdir( savedir + diskname )
 	galargs = get_galargs( wle=wle) 
-	extra_sources = copy_extra_sources( diskname, nRMS=nRMS ) if monosource==False else (0,0)		# deal with multiplicity in FoV
+	extra_sources = copy_extra_sources( diskname, nRMS=nRMS, config_name=config_name ) if monosource==False else (0,0)		# deal with multiplicity in FoV
 
 	# parameter space domain
 	p_ranges_2 = np.array([[8., 15],		# Log10( I0disk )	[Log(Jy/sr)]
@@ -884,7 +884,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False, extra_src=extra_sources )
 	
-	bestfit_plots( diskname, T_exp, galargs, two_components, sampler=sampled, monosource=monosource, extra_sources=extra_sources, wle=wle, savedir=savedir)
+	bestfit_plots( diskname, T_exp, galargs, two_components, sampled, monosource, extra_sources, nRMS, wle=wle, savedir=savedir, config_name=config_name)
 
 
 

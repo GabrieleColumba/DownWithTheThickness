@@ -15,7 +15,7 @@ if __name__=='__main__':
 	parser.add_argument('diskname', type=str, help='name of the diskNN_xx .fits file OR INDEX (default: None)')
 	parser.add_argument('RT_wavel', type=int, help='obs wavelength (3000 or 7000 [um]) (default: 3000)')
 	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
-	# parser.add_argument('-config', type=str, default='11.7', help='ALMA antenna configuration (default: 11.7)')
+	parser.add_argument('-config', type=str, default='11.7', help='ALMA antenna configuration (default: 11.7)')
 	parser.add_argument('-nsteps', type=int, default=5000, help='MCMC steps (default: 5000)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')
@@ -29,7 +29,7 @@ if __name__=='__main__':
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/'		# results directory name
 	try: os.mkdir( savedir )
 	except FileExistsError: print('Parent run directory already existent.')
-	# config_name = 
+	config_name = 'alma.cycle' + args["config"]
 
 	fitslist = sorted( glob.glob( data_folder + folder_wle + '*.fits') )
 	# print( len(fitslist), 'files found in the data folder')
@@ -46,8 +46,9 @@ if __name__=='__main__':
 			else:
 				#try:
 				generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
-					data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle)	
-				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], monosource=args['monosrc'], Ncpu=Ncpu, savedir=savedir, wle=wle)
+					data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name)	
+				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], monosource=args['monosrc'],
+				  Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_name)
 				#except: print( 'skipping', diskname)
 				# try:
 				# 	os.chdir( savedir + diskname )
@@ -68,11 +69,11 @@ if __name__=='__main__':
 			print( '\nRunning for: \t', diskname )
 
 			generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
-					data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle )
+					data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name )
 
 			mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-					Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=1.5, wle=wle)
+					Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=1.5, wle=wle, config_name=config_name)
 
-			# bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir )
+			# bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
 
 

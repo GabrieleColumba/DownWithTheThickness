@@ -301,7 +301,7 @@ def produce_truths_df():
 		Mstar.append( disks[prefix + '_sink_mass'] )	# star mass
 		age.append( disks[prefix + '_sink_age'] )
 
-	dfT = pd.DataFrame( np.array([Msim, Rsim, Lint, Lacc, dTemp1, dTemp2, multip, hr, Mstar, Mtot, angs_x, angs_y, angs_z]).T, 
+	dfT = pd.DataFrame( np.array([Msim, Rsim, Lint, Lacc, dTemp1, dTemp2, multip, hr, Mstar, age, angs_x, angs_y, angs_z]).T, 
 		columns=['M_disk', 'R_disk', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'multiplicity', 'hr', 'M_star', 'age', 'i_yz', 'i_xz', 'i_xy'], index=ids)
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
@@ -519,6 +519,7 @@ if __name__=='__main__':
 
 	parser = argparse.ArgumentParser()		# parsing the name of the disk file to read
 	parser.add_argument('RT_wavel', type=int, help='obs wavelength (3000 or 7000 [um]) (default: 3000)')
+	parser.add_argument('-config', type=str, help='ALMA antenna configuration (default: 11.7)')
 	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
@@ -529,6 +530,7 @@ if __name__=='__main__':
 	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' 		# results directory name
+	config_name = 'alma.cycle' + args['config']
 
 	assess_SNR(    Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
 	main_analysis( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
