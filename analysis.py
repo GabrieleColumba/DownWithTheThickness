@@ -18,7 +18,7 @@ from skimage.morphology import closing, footprints
 from local_variables import *
 plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10, 'figure.dpi':220})
 
-OKlist = np.array([17, 20, 29, 30, 42, 43, 50, 52, 53, 57, 65, 67, 70, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available
+OKlist = np.array([17, 20, 29, 30, 42, 43, 50, 52, 53, 57, 65, 67, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available (70 no bc binary)
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
 pixscale = 9.92063492063492e-6      	# deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
@@ -66,7 +66,7 @@ def thick_flux( v, d, r_max, l_star):
 
 
 def alma_resolution( wle, config_name):
-	'''Return the resolution [arcsec] given the lambda [m] and the config.'''
+	'''Return the FWHM resolution [arcsec] given the lambda [m] and the config.'''
 	L80_dict = {'6':1172.5, '7':1673.1, '8':3527.3 , '9':6482.6}	# 80 percentile baselines lenght [m]
 	C_number = config_name[-1]		# take the config number
 	theta_res = 0.574 * wle / L80_dict[ C_number ]		# [rad]
@@ -170,9 +170,10 @@ def plot_mass_compare( df):
 
 def plot_radius_compare( df, res_limit):
 	'''Assuming R_obs is R_90, in [au]. '''
+	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
 	ptitle = 'Radius comparison'
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
-	ax.fill_between( [0.01, res_limit, 10], y1=[10, 10, res_limit], y2=0.01, step='pre', facecolor='gray', alpha=0.16) #, label='resolution limit'  )
+	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16) #, label='resolution limit'  )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1   *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.8)		# observed radii
@@ -183,6 +184,8 @@ def plot_radius_compare( df, res_limit):
 	ax.legend()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
 	plt.show()
+
+	discrep = df.R_obs / df.R_sim - 1
 
 
 def plot_inc_compare( df):
@@ -262,7 +265,6 @@ def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
 	return F_v		# [Jy] integrated flux observed
 
 
-
 def produce_truths_df():
 	'''From Tungs data export a dataframe with the simulation truths of my interest. '''
 	import h5py
@@ -272,32 +274,33 @@ def produce_truths_df():
 	for k in hf.attrs.keys():	#Extract the disk quantities
 		disks[k] = hf.attrs[k]
 
-	Rsim = []; Msim = []; Lint = []; Lacc = []; dTemp1 = []; dTemp2 = []
-	angs_x = []; angs_y = []; angs_z = []
+	Rsim = []; Msim = []; Lint = []; Lacc = []; dTemp1 = []; dTemp2 = []; multip =[];
+	angs_x = []; angs_y = []; angs_z = []; hr = []; Mstar = []; age =[];
 	ids = disks['list_of_disks']
 
 	for i_d in ids:
-		directions = disks['disk_'+str(i_d).zfill(5)+'_direction'] 	# coordinates (x, y, z) of the normal vector of the disk
-		radius = disks['disk_'+str(i_d).zfill(5)+'_radius']
-		mass = disks['disk_'+str(i_d).zfill(5)+'_mass']
-		# height = disks['disk_'+str(i_d).zfill(5)+'_H']
+		prefix = 'disk_' + str(i_d).zfill(5)
+		directions = disks[prefix + '_direction'] 	# coordinates (x, y, z) of the normal vector of the disk
 		angs_x.append( np.arccos( directions[0]) *180/np.pi)
 		angs_y.append( np.arccos( directions[1]) *180/np.pi)    
 		angs_z.append( np.arccos( directions[2]) *180/np.pi)    
-		Rsim.append( radius)
-		Msim.append( mass)
-		Lint.append( disks['disk_'+str(i_d).zfill(5)+'_star_lum'] )
-		Lacc.append( disks['disk_'+str(i_d).zfill(5)+'_star_acclum'] )
-		dTemp1.append( disks['disk_'+str(i_d).zfill(5)+'_Temp_mid'] )	# mid, mavg o simple ?
-		dTemp2.append( disks['disk_'+str(i_d).zfill(5)+'_Temp_mavg'] )
-	
-	dfT = pd.DataFrame( np.array([Msim, Rsim, Lint, Lacc, dTemp1, dTemp2, angs_x, angs_y, angs_z]).T, 
-		columns=['M_disk', 'R_disk', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'i_yz', 'i_xz', 'i_xy'], index=ids)
+		Rsim.append( disks[prefix + '_radius'] )
+		Msim.append( disks[prefix + '_mass'] )			# disk mass
+		Lint.append( disks[prefix + '_star_lum'] )
+		Lacc.append( disks[prefix + '_star_acclum'] )
+		dTemp1.append( disks[prefix + '_Temp_mid'] )	# mid, mavg o simple ?
+		dTemp2.append( disks[prefix + '_Temp_mavg'] )
+		multip.append( disks[prefix + '_multiplicity'])
+		hr.append( disks[prefix + '_hoverr'] )			# scale height?
+		Mstar.append( disks[prefix + '_sink_mass'] )	# star mass
+		age.append( disks[prefix + '_sink_age'] )
+
+	dfT = pd.DataFrame( np.array([Msim, Rsim, Lint, Lacc, dTemp1, dTemp2, multip, hr, Mstar, Mtot, angs_x, angs_y, angs_z]).T, 
+		columns=['M_disk', 'R_disk', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'multiplicity', 'hr', 'M_star', 'age', 'i_yz', 'i_xz', 'i_xy'], index=ids)
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
 def OLD_produce_truths_df():
-	# tru_df = pd.DataFrame.from_dict( truths_dict, orient='index')
 	TT_sim = np.load( 'disks_Tung.pkl', allow_pickle=True, encoding='bytes')
 	# U_sim = np.load( '../simulations/disks_nmhd.pkl', allow_pickle=True)
 	tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
@@ -313,7 +316,9 @@ def OLD_produce_truths_df():
 
 	# 	print( '\n ugo: \t', U_sim[f'{n}']['star_acclum'][0] )
 	# 	print( 'tung: \t', TT_sim[b'star_acclum'][n-1])
-
+	
+	# for n in U_sim.keys():
+	# 	print( n, U_sim[f'{n}']['multiplicity'][0] )
 	# plt.plot( TT_sim[b'star_lum'] , c='b', alpha=0.7)
 	# plt.plot( TT_sim[b'star_acclum'], c='r', alpha=0.7)
 	# plt.plot( TT_sim[b'sink_mass'] , c='y' , alpha=0.7)
@@ -329,6 +334,7 @@ def OLD_produce_truths_df():
 	dfT = pd.DataFrame( np.array([masses, radii, L_int, L_acc, dtemp]).T, 
 					columns=['M_disk', 'R_disk', 'L_int', 'L_acc', 'T_disk'], index=tungslist+1)
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
+
 
 
 def main_analysis( Texp, wle, results_dir, config_name):
@@ -396,6 +402,7 @@ def main_analysis( Texp, wle, results_dir, config_name):
 	
 	os.chdir( results_dir )
 	res_df.to_csv( f'analysis_results-{Texp}s.txt', sep='\t') #, float_format='%.2e')
+	# res_df = pd.read_csv( f'analysis_results-3600s.txt', sep='\t', index_col='source')	# to load it
 	
 	# k_v = 0.54
 	# plot_opacity()
