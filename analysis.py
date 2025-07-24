@@ -16,7 +16,7 @@ from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 from local_variables import *
-plt.rcParams.update({ 'font.size':13, 'legend.fontsize':10, 'figure.dpi':220})
+plt.rcParams.update({ 'font.size':11, 'legend.fontsize':9, 'figure.dpi':200})
 
 OKlist = np.array([17, 20, 29, 30, 42, 43, 50, 52, 53, 57, 65, 67, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available (70 no bc binary)
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
@@ -136,7 +136,7 @@ def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122):
 	ax.scatter( x=Rdata, y=df.F_obs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	ax.legend( loc='lower right')
+	ax.legend( ) # loc='lower right'
 	fig.savefig( ptitle + f'_k{kappa :.3f}' + fig_ext , bbox_inches='tight')
 	plt.show()
 	
@@ -170,7 +170,10 @@ def plot_mass_compare( df):
 
 def plot_radius_compare( df, res_limit):
 	'''Assuming R_obs is R_90, in [au]. '''
+	r_ratio = df.R_obs / df.R_sim 
+	r_ratio[ r_ratio < 1] = 1 / r_ratio
 	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
+	
 	ptitle = 'Radius comparison'
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
 	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16) #, label='resolution limit'  )
@@ -178,6 +181,8 @@ def plot_radius_compare( df, res_limit):
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1   *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.8)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
+	ax.text( x=0.01, y=0.7, s=f'median accuracy: {np.median( r_ratio) :1.1f}x \nmean accuracy: {np.mean( r_ratio) :1.1f}x',
+			  ha='left', va='center', transform=ax.transAxes, color='g', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
 		 title=ptitle, xlim=[0.03,2.5], ylim=[0.03, 2.5], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
@@ -185,7 +190,8 @@ def plot_radius_compare( df, res_limit):
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
 	plt.show()
 
-	discrep = df.R_obs / df.R_sim - 1
+
+
 
 
 def plot_inc_compare( df):
@@ -376,7 +382,7 @@ def main_analysis( Texp, wle, results_dir, config_name):
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
 
-				k_v =  kappa_empir( v_obs, beta=1.) # kappa    # [cm2 / g]		# optool (true): 0.54 @3mm and 0.138 @7mm
+				k_v = 0.54 # kappa_empir( v_obs, beta=1.) # kappa    # [cm2 / g]		# optool (true): 0.54 @3mm and 0.138 @7mm
 				T_avg = 122     # [K]		Tung default: 122 K
 
 				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
