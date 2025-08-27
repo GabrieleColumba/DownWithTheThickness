@@ -5,7 +5,7 @@ from local_variables import *		# file with the local path pointers and cpu setti
 from visibfit_functions import *
 import argparse
 
-
+# [10,11,12,13,14,15,16,17,18,25,40,44,46]
 
 if __name__=='__main__':
 

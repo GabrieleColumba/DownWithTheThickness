@@ -36,6 +36,12 @@ def gauss_flux_tot( I0, sigma, Rmax):
 	return 2*np.pi* I0 * sigma**2 * (1 - np.exp( -0.5 * (Rmax/sigma)**2 ) )
 
 
+def accuracy_ratio( obs_val, sim_val ):
+	ratio = obs_val / sim_val
+	ratio[ ratio < 1] = 1 / ratio
+	return ratio
+
+
 def planck_bbody( v, T):
 	'''v frequency in Hz and T temperature in K. Bv in cgs units. '''
 	return 2 * const.h.cgs.value * v**3 / const.c.cgs.value**2 / ( np.exp( const.h.cgs.value * v / (const.k_B.cgs.value * T) ) - 1 )
@@ -114,11 +120,12 @@ def plot_Fv_compare_mod( df, v_obs, kappa, rdata='sim', Tbb=122):
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( loc='lower right')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + fig_ext , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.pdf' , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
 	plt.show()
 
 
-def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122):
+def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122, run_name=''):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
@@ -127,7 +134,7 @@ def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122):
 	
 	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
 
-	ptitle = 'Flux thickness'
+	ptitle = 'Flux thickness' + run_name
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
 	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
@@ -137,7 +144,8 @@ def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122):
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + fig_ext , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.pdf' , bbox_inches='tight')
 	plt.show()
 	
 
@@ -153,58 +161,66 @@ def thick_sim_inspo( df, kappa, v_obs):
 	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
 	ax.legend( loc='lower right')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + fig_ext , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
+	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.pdf' , bbox_inches='tight')
 	plt.show()
 	
 
-def plot_mass_compare( df):
-	ptitle = 'Mass comparison'
+def plot_mass_compare( df, run_name):
+	'''Compared retrieved mass from obs to simul mass of disks. '''
+	M_ratio = accuracy_ratio( df.M_obs, df.M_sim/100 )
+
+	ptitle = 'Mass comparison' + run_name
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )		# y=x identity
 	ax.scatter( x=df.M_sim/100, y=df.M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
+	ax.text( x=0.01, y=0.85, s= f'mean accuracy: {np.mean( M_ratio) :1.1f}x',
+		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
+	fig.savefig( ptitle + '.png' , bbox_inches='tight')
+	fig.savefig( ptitle + '.pdf' , bbox_inches='tight')
 	plt.show()
 
 
-def plot_radius_compare( df, res_limit):
+def plot_radius_compare( df, res_limit, run_name):
 	'''Assuming R_obs is R_90, in [au]. '''
-	r_ratio = df.R_obs / df.R_sim 
-	r_ratio[ r_ratio < 1] = 1 / r_ratio
+	r_ratio_90 = accuracy_ratio( df.R_obs, df.R_sim )
+	r_ratio_95 = accuracy_ratio( df.R_obs*1.14, df.R_sim )
 	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
 	
-	ptitle = 'Radius comparison'
+	ptitle = 'Radius comparison' + run_name
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
-	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16) #, label='resolution limit'  )
+	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1   *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.8)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
-	ax.text( x=0.01, y=0.7, s=f'median accuracy: {np.median( r_ratio) :1.1f}x \nmean accuracy: {np.mean( r_ratio) :1.1f}x',
-			  ha='left', va='center', transform=ax.transAxes, color='g', fontsize=10, alpha=0.8)
+	ax.text( x=0.01, y=0.7, s=(f'median accuracy $R_{{90\%}}$: {np.median( r_ratio_90) :1.1f}x \nmean accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
+		f'\nmean accuracy $R_{{95\%}}$: {np.mean( r_ratio_95) :1.1f}x'),
+		ha='left', va='center', transform=ax.transAxes, color='g', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
 		 title=ptitle, xlim=[0.03,2.5], ylim=[0.03, 2.5], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend()
-	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
+	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 
 
 
 
-def plot_inc_compare( df):
+def plot_inc_compare( df, run_name):
 	'''Assuming inc in [deg]. '''
 	inc = df.i_sim.copy() 
 	inc[ inc>= 90] = inc - 90
-	ptitle = 'Inclination comparison'
+	ptitle = 'Inclination comparison' + run_name
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
 	ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
 	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( ptitle + fig_ext , bbox_inches='tight')
+	[fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 
@@ -343,7 +359,7 @@ def OLD_produce_truths_df():
 
 
 
-def main_analysis( Texp, wle, results_dir, config_name):
+def main_analysis( Texp, wle, results_dir, config_name, run_name ):
 	'''
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
@@ -407,17 +423,17 @@ def main_analysis( Texp, wle, results_dir, config_name):
 				   ).set_index('source')
 	
 	os.chdir( results_dir )
-	res_df.to_csv( f'analysis_results-{Texp}s.txt', sep='\t') #, float_format='%.2e')
+	res_df.to_csv( f'analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
 	# res_df = pd.read_csv( f'analysis_results-3600s.txt', sep='\t', index_col='source')	# to load it
 	
 	# k_v = 0.54
 	# plot_opacity()
-	plot_Fv_compare( res_df, v_obs, k_v )
+	plot_Fv_compare( res_df, v_obs, k_v, run_name=run_name )
 	# plot_Fv_compare_mod( res_df, k_v )
-	plot_inc_compare( res_df )
-	plot_mass_compare( res_df )
+	plot_inc_compare( res_df, run_name )
+	plot_mass_compare( res_df, run_name )
 	theta = alma_resolution( wle=wle, config_name=config_name)
-	plot_radius_compare( res_df, theta )
+	plot_radius_compare( res_df, theta, run_name )
 	thick_sim_inspo( truths_df, 0.54, v_obs)
 
 	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
@@ -459,7 +475,7 @@ def peak_beam_avg( image, table):
 	return beam_avg
 
 
-def plot_SNR( df ):
+def plot_SNR( df, run_name ):
 
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	dff = df.reset_index()
@@ -469,12 +485,12 @@ def plot_SNR( df ):
 	ax.axhline( y=10, color='gray', ls='--')
 	ax.axhline( y=100, color='gray', ls='-')
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( 'SNR_plot' + fig_ext, bbox_inches='tight')
+	[fig.savefig( 'SNR_plot' + run_name + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 
 
-def assess_SNR( Texp, wle, results_dir, config_name ):
+def assess_SNR( Texp, wle, results_dir, config_name, run_name ):
 	'''
 	Evaluate the SNR of the cleaned image across the entire sample in results_dir. 
 	'''
@@ -508,7 +524,7 @@ def assess_SNR( Texp, wle, results_dir, config_name ):
 	df = pd.DataFrame( SNRs, columns=['source', 'SNR', 'max peak', 'beam peak', 'noise']).set_index('source')
 	os.chdir( results_dir )
 	df.to_csv( f'Peak-beam_SNR_{Texp}s.txt', sep='\t') #, float_format='%.2e')
-	plot_SNR( df )
+	plot_SNR( df, run_name)
 
 
 
@@ -531,6 +547,7 @@ if __name__=='__main__':
 	folder_wle = f'{round(wle*1e3)}mm/'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' 		# results directory name
 	config_name = 'alma.cycle' + args['config']
+	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	assess_SNR(    Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
-	main_analysis( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name )
+	assess_SNR(    Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	main_analysis( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
