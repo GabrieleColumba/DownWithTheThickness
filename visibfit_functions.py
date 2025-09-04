@@ -78,7 +78,7 @@ def Plummer_envelope( R, I0, Ri, Rout, p_index ):
 def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	'''
 	Let galario generate a model on the visibilities and return a Chi2 to the data.
-	pars: LI0d, (LI0e), sigma, (Ri, p_index,) inc, PA, dRA, dDec  , (): if two_comp is True
+	pars: LI0d, (LI0e), sigma, (Ri, Rout, p_index,) inc, PA, dRA, dDec  , (): if two_comp is True
 	galargs:  Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
 	two_comp: whether to use the only a gaussian (False) or gauss + plummer (True)
 	extra_sources: ([model array of non-central sources], pixscale ) 
@@ -86,9 +86,9 @@ def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	'''
 	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w = galargs
 	if two_comp:
-		LI0d, LI0e, sigma, Ri, p_index, inc, PA, dRA, dDec = pars
-		Ri *= arcsec
-		Rout = (Rmin + nR*dR) * arcsec
+		LI0d, LI0e, sigma, Ri, Rout, p_index, inc, PA, dRA, dDec = pars
+		Ri *= arcsec ; Rout *= arcsec
+		# Rout = (Rmin + nR*dR) * arcsec
 	else: 
 		LI0d, LI0e, sigma, inc, PA, dRA, dDec = pars			# unpack the parameters
 		# f = 1
@@ -293,7 +293,7 @@ def log_prior( pars, p_ranges, two_comp):
 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
 		if two_comp == True:
-			if (pars[2] <= pars[3]): #  and (pars[3] < pars[4]):		# impose that sigma < Ri ###< Rout
+			if ( 2* pars[3] < pars[4]):		# impose that 2 Ri < Rout  (pars[2] <= pars[3]): 
 				return 0.0
 			else: return -np.inf
 		else:
@@ -392,7 +392,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 	fig = corner.corner(
 		flat_samples, labels=labels, quantiles=[0.16, 0.5, 0.84], # title_quantiles=[0.5],
 		show_titles=True, fig=cornfig, 
-		label_kwargs={'labelpad':20, 'fontsize':0}, fontsize=8,
+		label_kwargs={'labelpad':20, 'fontsize':0}, #fontsize=8,
 		title_kwargs={"fontsize": 10, 'loc':'left'},	
 		)
 	cornfig.savefig( folder + 'corner_plot' + fig_ext, bbox_inches='tight')
@@ -424,7 +424,6 @@ def fix_skyflux( data_folder = '/Users/gcolumba/PostDoc_Mac/PostProc/simulations
 		sky_image = hdul[0].data 
 		fits.writeto( fname, data=sky_image*25, header=hdr, overwrite=True)
 	print('\n skyfix completed !')
-
 
 
 def cancel_extra_sources( skymodel, nRMS=1, figure=False ):
@@ -803,7 +802,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
 	nsteps = sampler.get_chain().shape[0]
 	if burnin is None:
-		burnin = nsteps//2
+		burnin = nsteps//3
 	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
 	np.savetxt( f'bestfit_params.txt', bestfit )
 
@@ -851,10 +850,10 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 
 	# parameter space domain
 	p_ranges_2 = np.array([[8., 15],		# Log10( I0disk )	[Log(Jy/sr)]
-						[0., 12.],		# Log10( IOenvelope)   /// f (lum fraction partition) []
+						[0., 12.],		# Log10( IOenvelope)   
 						[1e-5, .7],		# sigma i.e. sma [arcsec]
-						[1e-3, 6],		# Ri [arcsec]
-						# [0.5, 10],		# Rout [arcsec]
+						[1e-4, 6],		# Ri [arcsec]
+						[3e-4, 8],		# Rout [arcsec]
 						[1, 10],			# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
@@ -870,10 +869,10 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2 = np.array([12, 7., 0.2, 2.1, 3, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, p_idx, (inc, PA, dRA, dDec)
+	p0_2c = np.array([12, 7., 0.2, 1.1, 4., 2.7, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout, p_idx, (inc, PA, dRA, dDec)
 	p0_gauss = np.array([12, 5., 0.2, 80., 45., 0., 0.])		# Log(I0), Log(a), sma, inc, PA, dRA, dDec
 	if two_components:
-		p0_mc = p0_2
+		p0_mc = p0_2c
 		p_rang_mc = p_ranges_2
 	else:
 		p0_mc = p0_gauss
