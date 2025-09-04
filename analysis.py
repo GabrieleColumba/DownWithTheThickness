@@ -12,13 +12,14 @@ import pandas as pd
 import astropy.units as u
 from astropy import constants as const
 import casatools as cto
+from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 from local_variables import *
 plt.rcParams.update({ 'font.size':11, 'legend.fontsize':9, 'figure.dpi':200})
 
-OKlist = np.array([17, 20, 29, 30, 42, 43, 50, 52, 53, 57, 65, 67, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available (70 no bc binary)
+OKlist = np.array([17, 20, 30, 42, 43, 50, 52, 53, 57, 65, 67, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available (70, 29 no bc binary, 63 75 no bc no info in truths)
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
 pixscale = 9.92063492063492e-6      	# deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
@@ -100,36 +101,35 @@ def plot_opacity():
 	plt.show()
 
 
-def plot_Fv_compare_mod( df, v_obs, kappa, rdata='sim', Tbb=122):
+# def plot_Fv_compare_mod( df, v_obs, kappa, rdata='sim', Tbb=122):
 
-	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
-	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
-	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, 
-								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
+# 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
+# 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
+# 	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, 
+# 								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
 	
-	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
-	Fobs = df.F_obs * (1 - 0.7 * np.sin( np.deg2rad( df.i_sim)) )		# reduce obs flux by an amount prop to inc
+# 	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
+# 	Fobs = df.F_obs * (1 - 0.7 * np.sin( np.deg2rad( df.i_sim)) )		# reduce obs flux by an amount prop to inc
 
-	ptitle = 'Flux_thickness_MOD'
-	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
-	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
-	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T Tung)', alpha=0.8)
-	ax.scatter( x=Rdata, y=Fobs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
-	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
-	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	ax.legend( loc='lower right')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.pdf' , bbox_inches='tight')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
-	plt.show()
+# 	ptitle = 'Flux_thickness_MOD'
+# 	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
+# 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
+# 	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
+# 	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
+# 	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T Tung)', alpha=0.8)
+# 	ax.scatter( x=Rdata, y=Fobs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
+# 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
+# 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+# 	ax.legend( loc='lower right')
+# 	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
+# 	plt.show()
 
 
-def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122, run_name=''):
+def plot_Fv_compare( df, v_obs, kappa_obs, k_sim, rdata='sim', Tbb=122, run_name=''):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
-	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
-	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, 
+	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
+	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, 
 								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
 	
 	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
@@ -139,20 +139,19 @@ def plot_Fv_compare( df, v_obs, kappa, rdata='sim', Tbb=122, run_name=''):
 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
 	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
 	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T Tung)', alpha=0.8)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tbb} K)', alpha=0.8)
 	ax.scatter( x=Rdata, y=df.F_obs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.pdf' , bbox_inches='tight')
+	[ fig.savefig( ptitle + f'_k{kappa_obs :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 	
 
-def thick_sim_inspo( df, kappa, v_obs):
+def thick_sim_inspo( df, k_sim, v_obs):
 	'''directly from Tungs_truth.dat'''
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_disk.iloc[i] *au_to_rad, l_star=df.L_acc.iloc[i] + df.L_int.iloc[i]) for i in range( len(df.R_disk)) ]
-	thin_flux_sim = df.M_disk/100 * const.M_sun.cgs.value * kappa * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
+	thin_flux_sim = df.M_disk/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 	
 	ptitle = 'Simulation thin vs thick spread'
 	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
@@ -161,8 +160,7 @@ def thick_sim_inspo( df, kappa, v_obs):
 	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
 	ax.legend( loc='lower right')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
-	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.pdf' , bbox_inches='tight')
+	[ fig.savefig( ptitle + f'_k{k_sim :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 	
 
@@ -205,9 +203,6 @@ def plot_radius_compare( df, res_limit, run_name):
 	ax.legend()
 	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
-
-
-
 
 
 def plot_inc_compare( df, run_name):
@@ -359,17 +354,20 @@ def OLD_produce_truths_df():
 
 
 
-def main_analysis( Texp, wle, results_dir, config_name, run_name ):
+def main_analysis( wle, results_dir, config_name, run_name ):
 	'''
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
 	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
+	k_obs = 0.54 if round(wle*1e3)==3 else 0.138 # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
+	k_sim = 0.54 if round(wle*1e3)==3 else 0.138	# opTool original opacity for the simulation truths
+	T_avg = 122		# K
+
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
 	if disklist == []:    
 		print('NO FILES FOUND, check again the folder path!')
 		sys.exit()
 	print( len(disklist), 'files found')
-
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[OKlist]	# load my simulation truths file
 	paramlist = []
 
@@ -389,7 +387,7 @@ def main_analysis( Texp, wle, results_dir, config_name, run_name ):
 				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
 				R_90 = R_68 * 1.42                              # 90% radius
 				R_95 = R_68 * 1.62
-				R_obs = R_90     # as Tung ?
+				R_obs = R_90     # as Tung 
 
 				F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
 				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
@@ -397,11 +395,7 @@ def main_analysis( Texp, wle, results_dir, config_name, run_name ):
 				# theoretical fully thick disk flux
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
-
-				k_v = 0.54 # kappa_empir( v_obs, beta=1.) # kappa    # [cm2 / g]		# optool (true): 0.54 @3mm and 0.138 @7mm
-				T_avg = 122     # [K]		Tung default: 122 K
-
-				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_v * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
 
 			except: 
 				print('No bestfit params found for ', diskname)
@@ -414,7 +408,7 @@ def main_analysis( Texp, wle, results_dir, config_name, run_name ):
 				R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
 				i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
 				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
-				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
+				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 
 				paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
 
@@ -426,18 +420,17 @@ def main_analysis( Texp, wle, results_dir, config_name, run_name ):
 	res_df.to_csv( f'analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
 	# res_df = pd.read_csv( f'analysis_results-3600s.txt', sep='\t', index_col='source')	# to load it
 	
-	# k_v = 0.54
 	# plot_opacity()
-	plot_Fv_compare( res_df, v_obs, k_v, run_name=run_name )
+	plot_Fv_compare( res_df, v_obs, k_obs, k_sim, run_name=run_name )
 	# plot_Fv_compare_mod( res_df, k_v )
 	plot_inc_compare( res_df, run_name )
 	plot_mass_compare( res_df, run_name )
 	theta = alma_resolution( wle=wle, config_name=config_name)
 	plot_radius_compare( res_df, theta, run_name )
-	thick_sim_inspo( truths_df, 0.54, v_obs)
+	thick_sim_inspo( truths_df, k_sim, v_obs)
 
 	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
-	# thick_sim_inspo( truths_total, 0.54, v_obs)
+	# thick_sim_inspo( truths_total, k_sim, v_obs)
 
 
 
@@ -527,7 +520,91 @@ def assess_SNR( Texp, wle, results_dir, config_name, run_name ):
 	plot_SNR( df, run_name)
 
 
+def M_emp_relation( data, a, alpha, beta, gamma):
+	'''
+	Empiric formula to obtain observed disk mass [Msun] from total luminosity [Lsun], observed radius [au] and retrieved flux [Jy]. '''
+	L_tot, R_obs, F_v = data.copy()
+	M_disk = a * L_tot**alpha * R_obs**beta * F_v**gamma
+	return M_disk
 
+def M_emp_relation_log( data, La, alpha, beta, gamma):
+	'''
+	Empiric LOG formula to obtain observed disk mass [Msun] from total luminosity [Lsun], observed radius [au] and retrieved flux [Jy]. '''
+	LL_tot, LR_obs, LF_v = data.copy()
+	LM_disk = La + LL_tot*alpha + LR_obs*beta + LF_v*gamma
+	return LM_disk
+
+
+def fit_Mobs( results_dir, run_name, logfit=True):
+	'''
+	Regress the Mobs relation with a simple curve fit. 
+	'''
+	df = pd.read_csv( results_dir + f'analysis_results-{run_name}.txt', sep='\t')		# import the results dataframe
+	df.drop(df[df['source'] == '29_xz'].index, inplace=True)
+	xdata = [ df.L_tot.values, df.R_obs.values, df.F_obs.values ] 		# put multivariate data into 1D arrays [Lsun, au, Jy]
+	
+	param_bounds = np.array( [[1e-10, -5, -5, -6 ], 		# limits on parameters: a, alpha, beta, # gamma
+							[1e10 , +5, +5, +6 ]] )      	
+	init_guess = [ 1e-3, 0.1, 0.5, 0.04]		# starting guess
+	fitfunc = M_emp_relation
+	ydata = df.M_sim.values/100
+	if logfit:
+		xdata = np.log10( xdata ) ; ydata = np.log10( ydata )
+		param_bounds[:,0] = np.log10( param_bounds[:,0] ) ; init_guess[0] = np.log10( init_guess[0] )
+		fitfunc = M_emp_relation_log
+	
+	popt, pcov = curve_fit( fitfunc, xdata=xdata, ydata=ydata, p0=init_guess, bounds=param_bounds, absolute_sigma=False )
+	popt[0] = 10**popt[0] if logfit else popt[0]
+	fit_stds = np.sqrt(np.diag( pcov ))          # from scipy doc
+	print( r'fit:\n a = %.3e, $\alpha $ = %.3f , $\beta $= %.3f, $\gamma $= %.3f ' % tuple(popt) )	#  
+	print( 'Fit 1 sigma errors:', fit_stds ) 
+
+	ptitle = 'M_disk empirical fit' 
+	fig, axs = plt.subplots( 1,3, figsize=(6,3), sharey=True, constrained_layout=True)
+	fig.suptitle( ptitle )
+	xlabs = ['L_tot', 'R_obs', 'F_v']
+	xdata = [ df.L_tot.values, df.R_obs.values, df.F_obs.values ] 		# return to linear values just for plotting 
+	for i in range(3): 
+		axs[i].scatter( xdata[i], df.M_sim.values/100 )
+		xdata_sorted_i = [ df.L_tot.values[np.argsort(xdata[i])], df.R_obs.values[np.argsort(xdata[i])], df.F_obs.values[np.argsort(xdata[i])] ]
+		# axs[i].plot( np.sort(xdata[i]), M_obs_relation( xdata_sorted_i, *popt), c='r')
+		if logfit: 
+			xdata_mean = np.full_like( xdata_sorted_i, fill_value=10**np.mean( np.log10(xdata_sorted_i), axis=1).reshape(3,1) )
+		else: 
+			xdata_mean = np.full_like( xdata_sorted_i, fill_value=np.mean( xdata_sorted_i, axis=1).reshape(3,1) )
+		xdata_i = xdata_mean.copy(); xdata_i[i] = xdata_sorted_i[i]		# i var left free and others fixed at their (log) mean
+		axs[i].plot( xdata_sorted_i[i], M_emp_relation( xdata_i, *popt), c='r')
+		axs[i].set( xlabel=xlabs[i], xscale='log', yscale='log')
+	axs[0].set( ylabel='M_disk')
+	llab = '_log' if logfit else ''
+	[ fig.savefig( ptitle + llab + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	plt.show()
+	return popt
+
+
+# def mrel( x, a, beta):
+# 	L_tot, R_obs, F_v = x.copy()
+# 	M_disk = a  * R_obs**beta # * F_v**gamma
+# 	return M_disk
+
+# xdata = [ df.L_tot.values, df.R_obs.values, df.F_obs.values ] 		# put multivariate data into 1D arrays [Lsun, au, Jy]
+
+# param_bounds = ( [1e-10, -5, ], 		# limits on parameters: a, alpha, beta, # gamma
+# 				[1e10 , +5,  ] )      	
+# init_guess = [ 1e-4, 0.5, ]		# starting guess
+# popt, pcov = curve_fit( mrel, xdata=xdata, ydata=df.M_sim.values/100, p0=init_guess, bounds=param_bounds, absolute_sigma=False )
+# fit_stds = np.sqrt(np.diag( pcov ))          # from scipy doc
+# print( r'fit:\n a = %.3e , $\beta $= %.3f, ' % tuple(popt) )	#  
+# print( 'Fit 1 sigma errors:', fit_stds ) 
+
+# i=1
+# fig, axs = plt.subplots( figsize=(5,3), constrained_layout=True)
+# axs.scatter( df.R_obs, df.M_sim.values/100 )
+# xdata_sorted_i = [ df.L_tot.values[np.argsort(xdata[i])], df.R_obs.values[np.argsort(xdata[i])], df.F_obs.values[np.argsort(xdata[i])] ]
+# axs.plot( xdata_sorted_i[i], mrel( xdata_sorted_i, *popt), c='r')
+# axs.set(  xscale='log', yscale='log')
+# axs.set( ylabel='M_disk')
+# plt.show()
 
 
 
@@ -549,5 +626,5 @@ if __name__=='__main__':
 	config_name = 'alma.cycle' + args['config']
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	assess_SNR(    Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
-	main_analysis( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	main_analysis(  			wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
