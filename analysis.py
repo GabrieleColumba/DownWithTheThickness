@@ -125,7 +125,7 @@ def plot_opacity():
 # 	plt.show()
 
 
-def plot_Fv_compare( df, v_obs, kappa_obs, k_sim, rdata='sim', Tbb=122, run_name=''):
+def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tbb=122, run_name=''):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
@@ -144,7 +144,7 @@ def plot_Fv_compare( df, v_obs, kappa_obs, k_sim, rdata='sim', Tbb=122, run_name
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
-	[ fig.savefig( ptitle + f'_k{kappa_obs :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( ptitle + f'_k{k_sim :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 	
 
@@ -359,8 +359,8 @@ def main_analysis( wle, results_dir, config_name, run_name ):
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
 	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
-	k_obs = 0.54 if round(wle*1e3)==3 else 0.138 # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
 	k_sim = 0.54 if round(wle*1e3)==3 else 0.138	# opTool original opacity for the simulation truths
+	k_obs = k_sim # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
 	T_avg = 122		# K
 
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
@@ -390,7 +390,7 @@ def main_analysis( wle, results_dir, config_name, run_name ):
 				R_obs = R_90     # as Tung 
 
 				F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
-				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
+				Fv_count = 0 #count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
 				
 				# theoretical fully thick disk flux
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
@@ -421,7 +421,7 @@ def main_analysis( wle, results_dir, config_name, run_name ):
 	# res_df = pd.read_csv( f'analysis_results-3600s.txt', sep='\t', index_col='source')	# to load it
 	
 	# plot_opacity()
-	plot_Fv_compare( res_df, v_obs, k_obs, k_sim, run_name=run_name )
+	plot_Fv_compare( res_df, v_obs, k_sim, run_name=run_name )
 	# plot_Fv_compare_mod( res_df, k_v )
 	plot_inc_compare( res_df, run_name )
 	plot_mass_compare( res_df, run_name )
