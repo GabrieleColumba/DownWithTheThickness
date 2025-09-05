@@ -850,11 +850,11 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 
 	# parameter space domain
 	p_ranges_2 = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
-						[6., 12.],		# Log10( IOenvelope)   
+						[7., 12.],		# Log10( IOenvelope)   
 						[1e-5, .8],		# sigma i.e. sma [arcsec]
 						[1e-4, 5],		# Ri [arcsec]
 						[2, 30],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
-						[1, 6],			# p_index []
+						[1, 8],			# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
