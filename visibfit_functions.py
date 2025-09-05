@@ -78,7 +78,7 @@ def Plummer_envelope( R, I0, Ri, Rout, p_index ):
 def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	'''
 	Let galario generate a model on the visibilities and return a Chi2 to the data.
-	pars: LI0d, (LI0e), sigma, (Ri, Rout, p_index,) inc, PA, dRA, dDec  , (): if two_comp is True
+	pars: LI0d, (LI0e), sigma, (Ri, /Ri, p_index,) inc, PA, dRA, dDec  , (): if two_comp is True
 	galargs:  Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
 	two_comp: whether to use the only a gaussian (False) or gauss + plummer (True)
 	extra_sources: ([model array of non-central sources], pixscale ) 
@@ -86,8 +86,8 @@ def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	'''
 	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w = galargs
 	if two_comp:
-		LI0d, LI0e, sigma, Ri, Rout, p_index, inc, PA, dRA, dDec = pars
-		Ri *= arcsec ; Rout *= arcsec
+		LI0d, LI0e, sigma, Ri, Rout_Ri, p_index, inc, PA, dRA, dDec = pars
+		Ri *= arcsec ; Rout = Rout_Ri * Ri 		# Rout *= arcsec
 		# Rout = (Rmin + nR*dR) * arcsec
 	else: 
 		LI0d, LI0e, sigma, inc, PA, dRA, dDec = pars			# unpack the parameters
@@ -293,9 +293,9 @@ def log_prior( pars, p_ranges, two_comp):
 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
 		if two_comp == True:
-			if ( 2* pars[3] < pars[4]):		# impose that 2 Ri < Rout  (pars[2] <= pars[3]): 
-				return 0.0
-			else: return -np.inf
+			# if ( 2* pars[3] < pars[4]):		# impose that 2 Ri < Rout  (pars[2] <= pars[3]): 
+			return 0.0
+			# else: return -np.inf
 		else:
 			if (pars[1] <= pars[0]): 				# impose that Idisk > Ienv
 				return 0.0
@@ -795,7 +795,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	'''
 	os.chdir( savedir + diskname )
 	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
-	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
+	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'R_out/Ri', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
 	labs_mc = labels_2c if two_comp else labels_gauss
 
 	if sampler is None:
@@ -834,7 +834,7 @@ def get_galargs( wle=mm3):
 
 	# radial grid parameters
 	Rmin = 0  	# arcsec
-	Rmax = 6	# arcsec
+	Rmax = 8	# arcsec
 	dR = np.rad2deg(dxy) * 3600 / 11   	# arcsec
 	nR = int( Rmax / dR )			# dR per nr dnon deve superare il raggio massimo del modello,  3*MRS
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
@@ -849,19 +849,19 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 	extra_sources = copy_extra_sources( diskname, nRMS=nRMS, config_name=config_name ) if monosource==False else (0,0)		# deal with multiplicity in FoV
 
 	# parameter space domain
-	p_ranges_2 = np.array([[8., 15],		# Log10( I0disk )	[Log(Jy/sr)]
-						[0., 12.],		# Log10( IOenvelope)   
-						[1e-5, .7],		# sigma i.e. sma [arcsec]
-						[1e-4, 6],		# Ri [arcsec]
-						[3e-4, 8],		# Rout [arcsec]
-						[1, 10],			# p_index []
+	p_ranges_2 = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
+						[6., 12.],		# Log10( IOenvelope)   
+						[1e-5, .8],		# sigma i.e. sma [arcsec]
+						[1e-4, 5],		# Ri [arcsec]
+						[2, 30],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
+						[1, 6],			# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
 						[-2, 2]])		# dDec (arcsec)
 
-	p_ranges_gauss = np.array([[8.5, 15],	# Log10( I0 )	[Log(Jy/sr)]
-						[-5, 11],		# Log(a) const 		[Log(Jy/sr)]
+	p_ranges_gauss = np.array([[8, 15],	# Log10( I0 )	[Log(Jy/sr)]
+						[5, 11],		# Log(a) const 	[Log(Jy/sr)]
 						[1e-5, .8],		# sigma i.e. sma 	[arcsec]
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
@@ -869,8 +869,8 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2c = np.array([12, 7., 0.2, 1.1, 4., 2.7, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout, p_idx, (inc, PA, dRA, dDec)
-	p0_gauss = np.array([12, 5., 0.2, 80., 45., 0., 0.])		# Log(I0), Log(a), sma, inc, PA, dRA, dDec
+	p0_2c = np.array([11, 8., 0.2, 1.1, 15., 2.8, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
+	p0_gauss = np.array([12, 6., 0.2, 80., 45., 0., 0.])		# Log(I0), Log(a), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c
 		p_rang_mc = p_ranges_2
