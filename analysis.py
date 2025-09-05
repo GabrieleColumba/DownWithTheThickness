@@ -539,7 +539,8 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 	'''
 	Regress the Mobs relation with a simple curve fit. 
 	'''
-	df = pd.read_csv( results_dir + f'analysis_results-{run_name}.txt', sep='\t')		# import the results dataframe
+	os.chdir( results_dir )
+	df = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t')		# import the results dataframe
 	df.drop(df[df['source'] == '29_xz'].index, inplace=True)
 	xdata = [ df.L_tot.values, df.R_obs.values, df.F_obs.values ] 		# put multivariate data into 1D arrays [Lsun, au, Jy]
 	
@@ -553,7 +554,7 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 		param_bounds[:,0] = np.log10( param_bounds[:,0] ) ; init_guess[0] = np.log10( init_guess[0] )
 		fitfunc = M_emp_relation_log
 	
-	popt, pcov = curve_fit( fitfunc, xdata=xdata, ydata=ydata, p0=init_guess, bounds=param_bounds, absolute_sigma=False )
+	popt, pcov = curve_fit( fitfunc, xdata=xdata, ydata=ydata, p0=init_guess, bounds=param_bounds, absolute_sigma=True )
 	popt[0] = 10**popt[0] if logfit else popt[0]
 	fit_stds = np.sqrt(np.diag( pcov ))          # from scipy doc
 	print( r'fit:\n a = %.3e, $\alpha $ = %.3f , $\beta $= %.3f, $\gamma $= %.3f ' % tuple(popt) )	#  
@@ -626,5 +627,6 @@ if __name__=='__main__':
 	config_name = 'alma.cycle' + args['config']
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	main_analysis(  			wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	fit_Mobs( results_dir=savedir, run_name=run_suffix)
