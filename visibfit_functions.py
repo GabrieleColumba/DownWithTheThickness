@@ -850,7 +850,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 
 	# parameter space domain
 	p_ranges_2 = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
-						[7., 12.],		# Log10( IOenvelope)   
+						[7.8, 12.],		# Log10( IOenvelope)   
 						[1e-5, .8],		# sigma i.e. sma [arcsec]
 						[1e-4, 5],		# Ri [arcsec]
 						[2, 30],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
@@ -869,7 +869,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2c = np.array([11, 8., 0.2, 1.1, 15., 2.8, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
+	p0_2c = np.array([11, 8.4, 0.2, 1.1, 15., 2.8, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
 	p0_gauss = np.array([12, 6., 0.2, 80., 45., 0., 0.])		# Log(I0), Log(a), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c
