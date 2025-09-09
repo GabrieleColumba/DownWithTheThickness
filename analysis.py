@@ -12,6 +12,7 @@ import pandas as pd
 import astropy.units as u
 from astropy import constants as const
 import casatools as cto
+import emcee, corner
 from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
@@ -125,12 +126,12 @@ def plot_opacity():
 # 	plt.show()
 
 
-def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tbb=122, run_name=''):
+def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
-	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
-	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, 
-								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
+	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=Tavg) / dist.cgs.value**2  *1e23		# [Jy] 
+	# thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, 
+	# 							T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
 	
 	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
 
@@ -138,13 +139,14 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tbb=122, run_name=''):
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
 	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tbb} K)', alpha=0.8)
-	ax.scatter( x=Rdata, y=df.F_obs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
+	ax.scatter( x=df.R_sim, y=F_thick_sim, 	 marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg} K)', alpha=0.8)
+	ax.scatter( x= Rdata, 	y= df.F_obs, 	 marker='o', c='g', label='Fitted flux', alpha=0.7 )		# "observed" fluxes from galario fitting
+	ax.scatter( x= Rdata, 	y= df.Fv_count,  marker='o', c='b', label='Counts flux', alpha=0.3 )		# "observed" fluxes from direct counts
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
-	[ fig.savefig( ptitle + f'_k{k_sim :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( ptitle + f'_k{k_sim :.3f}_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 	
 
@@ -164,7 +166,7 @@ def thick_sim_inspo( df, k_sim, v_obs):
 	plt.show()
 	
 
-def plot_mass_compare( df, run_name):
+def plot_mass_compare( df, run_name, Tavg):
 	'''Compared retrieved mass from obs to simul mass of disks. '''
 	M_ratio = accuracy_ratio( df.M_obs, df.M_sim/100 )
 
@@ -177,7 +179,7 @@ def plot_mass_compare( df, run_name):
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	fig.savefig( ptitle + '.png' , bbox_inches='tight')
-	fig.savefig( ptitle + '.pdf' , bbox_inches='tight')
+	fig.savefig( ptitle + f'_{Tavg :1.0f}K' + '.pdf' , bbox_inches='tight')
 	plt.show()
 
 
@@ -196,7 +198,7 @@ def plot_radius_compare( df, res_limit, run_name):
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
 	ax.text( x=0.01, y=0.7, s=(f'median accuracy $R_{{90\%}}$: {np.median( r_ratio_90) :1.1f}x \nmean accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
 		f'\nmean accuracy $R_{{95\%}}$: {np.mean( r_ratio_95) :1.1f}x'),
-		ha='left', va='center', transform=ax.transAxes, color='g', fontsize=10, alpha=0.8)
+		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
 		 title=ptitle, xlim=[0.03,2.5], ylim=[0.03, 2.5], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
@@ -354,14 +356,14 @@ def OLD_produce_truths_df():
 
 
 
-def main_analysis( wle, results_dir, config_name, run_name ):
+def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=True):
 	'''
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
 	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
 	k_sim = 0.54 if round(wle*1e3)==3 else 0.138	# opTool original opacity for the simulation truths
 	k_obs = k_sim # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
-	T_avg = 122		# K
+	# T_avg = 122		# K
 
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
 	if disklist == []:    
@@ -380,17 +382,20 @@ def main_analysis( wle, results_dir, config_name, run_name ):
 			try:
 				# read the bestfit params from file for I0 and sma
 				pars = np.loadtxt( 'bestfit_params.txt')	# galario fits I0 in Jy/sr units
-				I0_d = 10**pars[0]                   		# disk peak intensity  [Jy/sr]
-				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma  [arcsec --> rad]
-				i_obs = pars[-4]								# disk inclination [deg]
+				LI0_d = pars[0]                   			# disk peak intensity 	Log[Jy/sr]
+				LI0_env = pars[1]							# envelope peak intensity	Log[Jy/sr]
+				Ri = np.deg2rad( pars[3] /3600)				# inner env radius	[arcsec --> rad]
+				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma	[arcsec --> rad]
+				i_obs = pars[-4]							# disk inclination [deg]
+				p_idx = pars[4]		# TODO : adjust when using for new 2c method !!!
 
 				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
 				R_90 = R_68 * 1.42                              # 90% radius
 				R_95 = R_68 * 1.62
 				R_obs = R_90     # as Tung 
 
-				F_v = gauss_flux_tot( I0_d, sma, 1*R_obs)      # observed flux density [Jy]
-				Fv_count = 0 #count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
+				F_v = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
+				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
 				
 				# theoretical fully thick disk flux
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
@@ -399,39 +404,41 @@ def main_analysis( wle, results_dir, config_name, run_name ):
 
 			except: 
 				print('No bestfit params found for ', diskname)
-				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = np.nan
+				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = Ri = p_idx = LI0_d = LI0_env = np.nan
 			
 			finally:
 				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
 				epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
 				R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
 				R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
+				Ri = (Ri * dist).to_value( u.au )				# rad to [au]
 				i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
 				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 
-				paramlist.append( [diskname, R_obs, R_sim, M_obs, M_sim, epsilon, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
+				paramlist.append( [diskname, R_obs, R_sim, Ri, p_idx, M_obs, M_sim, epsilon, LI0_d, LI0_env, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
 
 	res_df = pd.DataFrame( paramlist, 
-				   columns=['source', 'R_obs', 'R_sim', 'M_obs', 'M_sim', 'epsilon_M', 'F_obs', 'Fv_c', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
+				   columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs', 'M_sim', 'epsilon_M', 'LI0_d', 'LI0_env',
+				 'F_obs', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
 				   ).set_index('source')
 	
 	os.chdir( results_dir )
 	res_df.to_csv( f'analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
 	# res_df = pd.read_csv( f'analysis_results-3600s.txt', sep='\t', index_col='source')	# to load it
 	
-	# plot_opacity()
-	plot_Fv_compare( res_df, v_obs, k_sim, run_name=run_name )
-	# plot_Fv_compare_mod( res_df, k_v )
-	plot_inc_compare( res_df, run_name )
-	plot_mass_compare( res_df, run_name )
-	theta = alma_resolution( wle=wle, config_name=config_name)
-	plot_radius_compare( res_df, theta, run_name )
-	thick_sim_inspo( truths_df, k_sim, v_obs)
+	if figures:
+		# plot_opacity()
+		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, run_name=run_name )
+		# plot_inc_compare( res_df, run_name )
+		plot_mass_compare( res_df, run_name, T_avg )
+		theta = alma_resolution( wle=wle, config_name=config_name)
+		# plot_radius_compare( res_df, theta, run_name )
+		# thick_sim_inspo( truths_df, k_sim, v_obs)
 
-	# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
-	# thick_sim_inspo( truths_total, k_sim, v_obs)
-
+		# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
+		# thick_sim_inspo( truths_total, k_sim, v_obs)
+	return res_df
 
 
 
@@ -542,6 +549,7 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 	os.chdir( results_dir )
 	df = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t')		# import the results dataframe
 	df.drop(df[df['source'] == '29_xz'].index, inplace=True)
+	df.dropna( inplace=True )
 	xdata = [ df.L_tot.values, df.R_obs.values, df.F_obs.values ] 		# put multivariate data into 1D arrays [Lsun, au, Jy]
 	
 	param_bounds = np.array( [[1e-10, -5, -5, -6 ], 		# limits on parameters: a, alpha, beta, # gamma
@@ -583,29 +591,158 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 	return popt
 
 
-# def mrel( x, a, beta):
-# 	L_tot, R_obs, F_v = x.copy()
-# 	M_disk = a  * R_obs**beta # * F_v**gamma
-# 	return M_disk
 
-# xdata = [ df.L_tot.values, df.R_obs.values, df.F_obs.values ] 		# put multivariate data into 1D arrays [Lsun, au, Jy]
+# def log_likelihood(theta, x, y, yerr):
+#     m, b, log_f = theta
+#     model = m * x + b
+#     sigma2 = yerr**2 + model**2 * np.exp(2 * log_f)
+#     return -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))
+# def log_likelihood( pars, galargs, two_comp, xsrc): 
+# 	'''Galario fit chi2 likelihood function'''
+# 	chi2 = galario_fit( pars=pars, galargs=galargs, two_comp=two_comp, extra_sources=xsrc )[1]
+# 	return -0.5 * chi2
 
-# param_bounds = ( [1e-10, -5, ], 		# limits on parameters: a, alpha, beta, # gamma
-# 				[1e10 , +5,  ] )      	
-# init_guess = [ 1e-4, 0.5, ]		# starting guess
-# popt, pcov = curve_fit( mrel, xdata=xdata, ydata=df.M_sim.values/100, p0=init_guess, bounds=param_bounds, absolute_sigma=False )
-# fit_stds = np.sqrt(np.diag( pcov ))          # from scipy doc
-# print( r'fit:\n a = %.3e , $\beta $= %.3f, ' % tuple(popt) )	#  
-# print( 'Fit 1 sigma errors:', fit_stds ) 
+# def log_prior( pars, p_ranges, two_comp): 
+# 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
+# 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
+# 		if two_comp == True:
+# 			# if ( 2* pars[3] < pars[4]):		# impose that 2 Ri < Rout  (pars[2] <= pars[3]): 
+# 			return 0.0
+# 			# else: return -np.inf
+# 		else:
+# 			if (pars[1] <= pars[0]): 				# impose that Idisk > Ienv
+# 				return 0.0
+# 			else: return -np.inf	
+# 	else:	
+# 		return -np.inf
 
-# i=1
-# fig, axs = plt.subplots( figsize=(5,3), constrained_layout=True)
-# axs.scatter( df.R_obs, df.M_sim.values/100 )
-# xdata_sorted_i = [ df.L_tot.values[np.argsort(xdata[i])], df.R_obs.values[np.argsort(xdata[i])], df.F_obs.values[np.argsort(xdata[i])] ]
-# axs.plot( xdata_sorted_i[i], mrel( xdata_sorted_i, *popt), c='r')
-# axs.set(  xscale='log', yscale='log')
-# axs.set( ylabel='M_disk')
-# plt.show()
+# def log_probability( pars, p_ranges, galargs, two_comp, xsrc):
+# 	logprior = log_prior( pars=pars, p_ranges=p_ranges, two_comp=two_comp)
+# 	if not np.isfinite( logprior):
+# 		return -np.inf
+# 	return logprior + log_likelihood( pars, galargs, two_comp, xsrc)
+
+
+def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_comp=False, backend_fname='last_sampler', append=False, extra_src=[0,0]):
+	'''
+	Launch an MCMC run for the galario fitting. 
+	galargs:  	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
+	p0: 		starting guess parameter vector
+	append=True will result in the continuation of previously saved chains
+	'''
+	ndim = len(p0)
+	startpos = None
+
+	bknd_samp = emcee.backends.HDFBackend( backend_fname + '.h5')		# store sampler on file
+	if append == False: 
+		bknd_samp.reset( nwalkers=nwalkers, ndim=ndim)
+		startpos = p0 + 1e-2* np.random.randn( nwalkers, ndim) 	# initialize the walkers with an nD Gaussian ball
+	else: print('\n Continuining previous chains from saved backend. \n')
+	
+	sampler = emcee.EnsembleSampler( nwalkers, ndim, log_probability, args=(p_ranges, galargs, two_comp, extra_src), 
+							# threads=nthreads, 
+							backend=bknd_samp, # live_dangerously=False, 
+			moves=[ (emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2),], 	# mv1
+			# moves=[ (emcee.moves.StretchMove(), 0.5), (emcee.moves.DEMove(), 0.5),], 		# mv2
+			# moves = emcee.moves.KDEMove(), 	# mv3	
+			)
+	
+	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
+	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
+	# sampler.reset()
+	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True)			# full production run
+	return sampler
+
+
+def clip_chains( samples, thresh=5):
+	'''
+	Discard the walkers that are more than thresh sigma away from the median.
+	'''
+	steps_median = np.median( samples, axis=0)		# median of all the steps for each walker
+	param_std = np.std( steps_median, axis=0)		# std of parameter posteriors
+	clip_idx = np.argwhere( (np.abs( steps_median - np.median( steps_median, axis=0) ) > thresh * param_std ).any( axis=1 ) )	# if exceeds thresh in any param
+	if len(clip_idx) > 0:
+		print( f'Clipping {len(clip_idx)} walkers that are more than {thresh} sigma away from the median.')
+		clipped = np.delete( samples, clip_idx, axis=1 )		# remove the chains of the outlying walkers
+		return clipped
+	else:
+		print( 'No walkers to clip.')
+		return samples
+
+
+def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, folder='./'):
+	'''
+	Show the traces of mcmc steps for sampler run and the corner plot.
+	'''
+	try:
+		# print( "Mean acceptance fraction: {0:.3f}".format( np.mean(samp_bkend.acceptance_fraction) ) )
+		tau = samp_bkend.get_autocorr_time( discard=int(burn_in), quiet=True)
+		print( 'autocorr time: \t', tau)
+		new_burn_in = int(2 * np.max(tau))      # discard the burn-in steps based on autocorrelation
+		# thinning = int(0.5 * np.min(tau))
+	except: 
+		print('It was not possible to determine the autocorrelation time tau')
+		pass
+
+	samples = samp_bkend.get_chain( discard=int(burn_in) )
+	if walk_clip_thresh != None:
+		samples = clip_chains( samples, thresh=walk_clip_thresh)		# remove outlying walkers
+	flat_samples = samples.reshape( -1, len(labels) )		# discarding the burn-in steps in the first step before chains
+
+	fig, axes = plt.subplots( len(labels), figsize=(8, 8), sharex=True)			# CHAIN traces
+	for i in range( len(labels)):
+		ax = axes[i]
+		ax.plot( samples[:, :, i], "k", alpha=0.3)
+		ax.set_xlim(0, len(samples))
+		ax.set_ylabel( labels[i])
+		ax.yaxis.set_label_coords(-0.1, 0.5)
+	axes[-1].set_xlabel("step number")
+	# fig.savefig( folder + 'chains_steps' + fig_ext, dpi=400)
+	if figures: plt.show()
+	plt.close()
+
+	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
+	fig = corner.corner(
+		flat_samples, labels=labels, quantiles=[0.16, 0.5, 0.84], # title_quantiles=[0.5],
+		show_titles=True, fig=cornfig, 
+		label_kwargs={'labelpad':20, 'fontsize':0}, #fontsize=8,
+		title_kwargs={"fontsize": 10, 'loc':'left'},	
+		)
+	# cornfig.savefig( folder + 'corner_plot' + fig_ext, bbox_inches='tight')
+	if figures: plt.show()
+	plt.close()
+
+	best_pars = np.percentile( flat_samples,  50, axis=0)     # best params out of fit
+	return best_pars
+
+
+def inspect_plots( two_comp=True, sampler=None, burnin=None, walksigma=4, results_dir=''):
+	'''
+	inspect MCMC plots (chains + corner).
+	'''
+	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
+	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
+	labs_mc = labels_2c if two_comp else labels_gauss
+
+	disklist = sorted( glob.glob( results_dir + 'disk*') )
+	if disklist == []:    
+		print('NO FILES FOUND, check again the folder path!')
+		sys.exit()
+	print( len(disklist), 'files found')
+
+	for fpath in disklist:
+		os.chdir( fpath )
+		diskname = fpath.replace( results_dir, '' )
+		print( '\nInspecting:  ', diskname)
+		# disk_n = int(diskname.strip( '_yzx'))
+		# os.chdir( diskname )
+
+		if sampler is None:
+			sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
+		nsteps = sampler.get_chain().shape[0]
+		if burnin is None:
+			burnin = nsteps//3
+		bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=True )
 
 
 
@@ -617,6 +754,7 @@ if __name__=='__main__':
 	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
+	parser.add_argument('-Tavg', default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
 	args = vars( parser.parse_args() )
 
 	model_comps = '2c' if args['2c'] else 'g+'
@@ -627,6 +765,30 @@ if __name__=='__main__':
 	config_name = 'alma.cycle' + args['config']
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
-	main_analysis(  			wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
-	fit_Mobs( results_dir=savedir, run_name=run_suffix)
+	for t in np.logspace( 2, 3, 6):
+		main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
+
+	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, figures=True )
+	fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
+	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
+
+
+# Texp = 10800
+# model_comps = '2c'
+# xsrc_flag = 'mono'
+# wle = 0.003
+# folder_wle = f'{round(wle*1e3)}mm/'
+# savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
+# run_suffix = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
+# config_name = 'alma.cycle11.7' 
+
+# # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
+
+# for t in np.logspace( 2, 3, 6):
+# 	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
+
+
+
+
+
