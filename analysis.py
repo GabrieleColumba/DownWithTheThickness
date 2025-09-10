@@ -140,7 +140,7 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
 	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
 	ax.scatter( x=df.R_sim, y=F_thick_sim, 	 marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg} K)', alpha=0.8)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg :1.0f} K)', alpha=0.8)
 	ax.scatter( x= Rdata, 	y= df.F_obs, 	 marker='o', c='g', label='Fitted flux', alpha=0.7 )		# "observed" fluxes from galario fitting
 	ax.scatter( x= Rdata, 	y= df.Fv_count,  marker='o', c='b', label='Counts flux', alpha=0.3 )		# "observed" fluxes from direct counts
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
@@ -178,8 +178,7 @@ def plot_mass_compare( df, run_name, Tavg):
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	fig.savefig( ptitle + '.png' , bbox_inches='tight')
-	fig.savefig( ptitle + f'_{Tavg :1.0f}K' + '.pdf' , bbox_inches='tight')
+	[ fig.savefig( ptitle + f'_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 
@@ -355,6 +354,15 @@ def OLD_produce_truths_df():
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
+def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
+	r_grid = np.logspace(-5, np.log10(R_obs), 400)
+	Mtot = 0
+	for i in range(len(r_grid) - 1):
+		dFv = gauss_flux_tot( 10**LI0_d, sma, r_grid[i+1]) - gauss_flux_tot( 10**LI0_d, sma, r_grid[i])     # annulus flux density of DISK [Jy]
+		dM = ( dist.cgs.value )**2 / kappa * dFv * 1e-23 / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=(r_grid[i+1] + r_grid[i])/2 ) )
+		Mtot = Mtot + dM
+	return Mtot / const.M_sun.cgs.value
+
 
 def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=True):
 	'''
@@ -400,7 +408,8 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 				# theoretical fully thick disk flux
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
-				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+				# M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+				M_obs = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)
 
 			except: 
 				print('No bestfit params found for ', diskname)
@@ -429,7 +438,7 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 	
 	if figures:
 		# plot_opacity()
-		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, run_name=run_name )
+		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name )
 		# plot_inc_compare( res_df, run_name )
 		plot_mass_compare( res_df, run_name, T_avg )
 		theta = alma_resolution( wle=wle, config_name=config_name)
@@ -754,7 +763,7 @@ if __name__=='__main__':
 	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
-	parser.add_argument('-Tavg', default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
+	parser.add_argument('-Tavg', type=int, default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
 	args = vars( parser.parse_args() )
 
 	model_comps = '2c' if args['2c'] else 'g+'
@@ -765,10 +774,10 @@ if __name__=='__main__':
 	config_name = 'alma.cycle' + args['config']
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	for t in np.logspace( 2, 3, 6):
+	for t in np.logspace( 2, 2.7, 5):
 		main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
-	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, figures=True )
 	fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
