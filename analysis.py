@@ -59,9 +59,9 @@ def temp_profile_Tung( lum, r):
 	'''Average T(r) profile from Tung24 fit. lum=Lint+Lacc in [Lsun] and r in [au]. '''
 	return lum**0.25 * ( r / 35 )**(-0.52) * 71   # Kelvin
 
-def disk_avg_T( lum, r_disk):
-	'''Average T weighted over disk surface, from from Tung24 T law. lum=Lint+Lacc in [Lsun] and r in [au]. '''
-	return lum**0.25 * ( r_disk)**(-0.52) * 15.1   # Kelvin
+def disk_avg_T( lum, r):
+	'''Average T weighted over disk surface, from from Tung24 T law. lum[Lsun] and r (tot disk) in [au]. '''
+	return lum**0.25 * ( r)**(-0.52) * 15.1   # Kelvin
 
 
 def thick_flux( v, d, r_max, l_star):
@@ -142,9 +142,9 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 	ptitle = 'Flux thickness' + run_name
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
-	ax.scatter( x=df.R_sim, y=thin_flux_sim2, marker='v', c='r', label='Thin flux from Msim (T(r)=Tung+24)', alpha=0.6, zorder=4 )
+	# ax.scatter( x=df.R_sim, y=thin_flux_sim2, marker='v', c='r', label='Thin flux from Msim (T(r)=Tung+24)', alpha=0.6, zorder=4 )
 	ax.scatter( x=df.R_sim, y=F_thick_sim, 	 marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg :1.0f} K)', alpha=0.8)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg :1.0f} K)', alpha=0.8)
 	ax.scatter( x= Rdata, 	y= df.Fv_count,  marker='o', c='b', label='Counts flux', alpha=0.3 )		# "observed" fluxes from direct counts
 	ax.scatter( x= Rdata, 	y= df.F_obs, 	 marker='o', c='g', label='Fitted flux', alpha=0.7 )		# "observed" fluxes from galario fitting
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
@@ -154,15 +154,15 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 	plt.show()
 	
 
-def thick_sim_inspo( df, k_sim, v_obs):
+def thick_sim_inspo( df, k_sim, Tavg, v_obs, run_name):
 	'''directly from Tungs_truth.dat'''
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_disk.iloc[i] *au_to_rad, l_star=df.L_acc.iloc[i] + df.L_int.iloc[i]) for i in range( len(df.R_disk)) ]
-	thin_flux_sim = df.M_disk/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
+	thin_flux_sim = df.M_disk/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=Tavg) / dist.cgs.value**2  *1e23	
 	
-	ptitle = 'Simulation thin vs thick spread'
+	ptitle = 'Simulation thin vs thick spread' + run_name[0:3]
 	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
 	ax.scatter( x=df.R_disk, y= F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-	ax.scatter( x=df.R_disk, y= thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T=122K)', alpha=0.7)
+	ax.scatter( x=df.R_disk, y= thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg :1.0f} K)', alpha=0.7)
 	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
 	ax.legend( loc='lower right')
@@ -197,7 +197,7 @@ def plot_radius_compare( df, res_limit, run_name):
 	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
-	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1   *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.8)		# observed radii
+	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1   *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.7, zorder=3.7)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
 	ax.text( x=0.01, y=0.7, s=(f'median accuracy $R_{{90\%}}$: {np.median( r_ratio_90) :1.1f}x \nmean accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
 		f'\nmean accuracy $R_{{95\%}}$: {np.mean( r_ratio_95) :1.1f}x'),
@@ -406,7 +406,7 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 				R_obs = R_90     # as Tung 
 
 				F_v = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
-				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
+				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=10, config_name=config_name, results_dir=results_dir )
 				
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)			# theoretical fully thick disk flux
@@ -441,11 +441,11 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 	if figures:
 		# plot_opacity()
 		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name )
-		# plot_inc_compare( res_df, run_name )
+		plot_inc_compare( res_df, run_name )
 		plot_mass_compare( res_df, run_name, T_avg )
 		theta = alma_resolution( wle=wle, config_name=config_name)
-		# plot_radius_compare( res_df, theta, run_name )
-		# thick_sim_inspo( truths_df, k_sim, v_obs)
+		plot_radius_compare( res_df, theta, run_name )
+		thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
 
 		# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	return res_df
@@ -578,7 +578,7 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 	print( r'fit:\n a = %.3e, $\alpha $ = %.3f , $\beta $= %.3f, $\gamma $= %.3f ' % tuple(popt) )	#  
 	print( 'Fit 1 sigma errors:', fit_stds ) 
 
-	ptitle = 'M_disk empirical fit' 
+	ptitle = 'M_disk empirical fit' + run_name
 	fig, axs = plt.subplots( 1,3, figsize=(6,3), sharey=True, constrained_layout=True)
 	fig.suptitle( ptitle )
 	xlabs = ['L_tot', 'R_obs', 'F_v']
@@ -775,12 +775,12 @@ if __name__=='__main__':
 	config_name = 'alma.cycle' + args['config']
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	# for t in np.logspace( 2, 2.7, 5):
-	# 	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
+	for t in [150, 200, 350]: #np.logspace( 2, 2.7, 5):
+		main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
-	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, figures=True )
-	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
+	fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 
 
@@ -794,11 +794,6 @@ if __name__=='__main__':
 # config_name = 'alma.cycle11.7' 
 
 # # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
-
-# for t in np.logspace( 2, 3, 6):
-# 	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
-
-
 
 
 
