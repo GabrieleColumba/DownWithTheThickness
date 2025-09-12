@@ -32,7 +32,7 @@ au_to_as = 1 / dist.to_value(u.au) * 180 / np.pi * 3600		# from au to arcsec
 def gauss_flux_tot( I0, sigma, Rmax):
 	'''
 	Compute the total flux from a gaussian disk with peak brightness I0 integrating radially up to Rmax. 
-	inputs  I0: Jy/sr       sigma, Rmax: rad
+	inputs  I0: [Jy/sr]       sigma, Rmax: [rad]
 	returns F_v: [Jy]
 	'''
 	return 2*np.pi* I0 * sigma**2 * (1 - np.exp( -0.5 * (Rmax/sigma)**2 ) )
@@ -58,6 +58,10 @@ def kappa_empir( v_obs, beta):
 def temp_profile_Tung( lum, r):
 	'''Average T(r) profile from Tung24 fit. lum=Lint+Lacc in [Lsun] and r in [au]. '''
 	return lum**0.25 * ( r / 35 )**(-0.52) * 71   # Kelvin
+
+def disk_avg_T( lum, r_disk):
+	'''Average T weighted over disk surface, from from Tung24 T law. lum=Lint+Lacc in [Lsun] and r in [au]. '''
+	return lum**0.25 * ( r_disk)**(-0.52) * 15.1   # Kelvin
 
 
 def thick_flux( v, d, r_max, l_star):
@@ -130,19 +134,19 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=Tavg) / dist.cgs.value**2  *1e23		# [Jy] 
-	# thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, 
-	# 							T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
+	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, 
+	 							T= disk_avg_T(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
 	
 	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
 
 	ptitle = 'Flux thickness' + run_name
 	fig, ax = plt.subplots( figsize=(6,4), tight_layout=True)
 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
-	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
+	ax.scatter( x=df.R_sim, y=thin_flux_sim2, marker='v', c='r', label='Thin flux from Msim (T(r)=Tung+24)', alpha=0.6, zorder=4 )
 	ax.scatter( x=df.R_sim, y=F_thick_sim, 	 marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg :1.0f} K)', alpha=0.8)
-	ax.scatter( x= Rdata, 	y= df.F_obs, 	 marker='o', c='g', label='Fitted flux', alpha=0.7 )		# "observed" fluxes from galario fitting
+	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label=f'Thin flux from Msim (T={Tavg :1.0f} K)', alpha=0.8)
 	ax.scatter( x= Rdata, 	y= df.Fv_count,  marker='o', c='b', label='Counts flux', alpha=0.3 )		# "observed" fluxes from direct counts
+	ax.scatter( x= Rdata, 	y= df.F_obs, 	 marker='o', c='g', label='Fitted flux', alpha=0.7 )		# "observed" fluxes from galario fitting
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
@@ -355,13 +359,13 @@ def OLD_produce_truths_df():
 
 
 def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
-	r_grid = np.logspace(-5, np.log10(R_obs), 400)
-	Mtot = 0
-	for i in range(len(r_grid) - 1):
-		dFv = gauss_flux_tot( 10**LI0_d, sma, r_grid[i+1]) - gauss_flux_tot( 10**LI0_d, sma, r_grid[i])     # annulus flux density of DISK [Jy]
-		dM = ( dist.cgs.value )**2 / kappa * dFv * 1e-23 / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=(r_grid[i+1] + r_grid[i])/2 ) )
-		Mtot = Mtot + dM
-	return Mtot / const.M_sun.cgs.value
+	'''Compute disk mass in thin approximation but summing on annuli over the Robs, with Tung Temp profile and fitted I0_disk.'''
+	r_grid = np.logspace(-8, np.log10(R_obs), 50)		# [rad]
+	dF_grid = np.diff( gauss_flux_tot( 10**LI0_d, sma, r_grid ) )	# annulus-integrated flux density [Jy]
+	rmid = ( r_grid[:-1] + r_grid[1:] ) / 2 * dist.to_value(u.au)	# midpoint radii [au]
+	dM = ( dist.cgs.value )**2 / kappa * dF_grid  / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=rmid ) )
+	Mtot = dM.sum() / const.M_sun.cgs.value * 1e-23		# [Msun]
+	return Mtot, dF_grid.sum() 
 
 
 def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=True):
@@ -371,7 +375,6 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
 	k_sim = 0.54 if round(wle*1e3)==3 else 0.138	# opTool original opacity for the simulation truths
 	k_obs = k_sim # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
-	# T_avg = 122		# K
 
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
 	if disklist == []:    
@@ -395,7 +398,7 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 				Ri = np.deg2rad( pars[3] /3600)				# inner env radius	[arcsec --> rad]
 				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma	[arcsec --> rad]
 				i_obs = pars[-4]							# disk inclination [deg]
-				p_idx = pars[4]		# TODO : adjust when using for new 2c method !!!
+				p_idx = pars[5]	
 
 				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
 				R_90 = R_68 * 1.42                              # 90% radius
@@ -405,11 +408,10 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 				F_v = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
 				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=5, config_name=config_name, results_dir=results_dir )
 				
-				# theoretical fully thick disk flux
-				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
-				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)
+				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
+				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)			# theoretical fully thick disk flux
 				# M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
-				M_obs = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)
+				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)
 
 			except: 
 				print('No bestfit params found for ', diskname)
@@ -446,7 +448,6 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 		# thick_sim_inspo( truths_df, k_sim, v_obs)
 
 		# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
-		# thick_sim_inspo( truths_total, k_sim, v_obs)
 	return res_df
 
 
@@ -774,12 +775,12 @@ if __name__=='__main__':
 	config_name = 'alma.cycle' + args['config']
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	for t in np.logspace( 2, 2.7, 5):
-		main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
+	# for t in np.logspace( 2, 2.7, 5):
+	# 	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
-	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, figures=True )
-	fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
+	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 
 
