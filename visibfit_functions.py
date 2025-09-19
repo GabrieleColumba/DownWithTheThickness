@@ -581,7 +581,7 @@ def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', 
 		# refdate = '2019/08/15' ,
 		totaltime= f'{T_exp}s' ,
 		thermalnoise= 'tsys-atm',
-		user_pwv= 5.186,
+		user_pwv= 0.7,  # 5.186,      # 5.186 @ 3,7mm, 0.7 @ 1mm
 		overwrite = True,
 		graphics= 'file')
 	plt.close()
@@ -784,7 +784,9 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, ext
 		uv_mod.deproject( inc=0, PA=0, inplace=False)
 		uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=amod, label=mod_lab, yerr=False, uvbin_size=uvbin_size)
 
-	axes[0].figure.savefig( 'uvplot' + fig_ext)
+	axes[0].axes.set( xscale='log', yscale='log')
+	axes[1].axes.set( xscale='log')
+	axes[0].figure.savefig( 'uvplot_log' + fig_ext)
 	plt.close()
 	return bestmod_image, vis_model
 
@@ -850,11 +852,11 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 
 	# parameter space domain
 	p_ranges_2 = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
-						[7.8, 12.],		# Log10( IOenvelope)   
+						[7.8, 13.],		# Log10( IOenvelope)   
 						[1e-5, .8],		# sigma i.e. sma [arcsec]
 						[1e-4, 5],		# Ri [arcsec]
-						[2, 30],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
-						[1, 8],			# p_index []
+						[2, 40],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
+						[1, 4],			# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
