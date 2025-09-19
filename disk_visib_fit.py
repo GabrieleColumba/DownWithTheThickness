@@ -18,21 +18,21 @@ if __name__=='__main__':
 	parser.add_argument('-config', type=str, default='11.7', help='ALMA antenna configuration (default: 11.7)')
 	parser.add_argument('-nsteps', type=int, default=5000, help='MCMC steps (default: 5000)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
+	parser.add_argument('-replot_only', action='store_true', help='replot all the bestfit plots for the fitting part (default: False)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )
 
 	model_comps = '2c' if args['2c'] else 'g+'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
+	config_name = 'alma.cycle' + args["config"]
 	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/'		# results directory name
 	try: os.mkdir( savedir )
 	except FileExistsError: print('Parent run directory already existent.')
-	config_name = 'alma.cycle' + args["config"]
 
 	fitslist = sorted( glob.glob( data_folder + folder_wle + '*.fits') )
-	# print( len(fitslist), 'files found in the data folder')
 	if fitslist == []:
 		print('NO FILES FOUND, check again the folder path!')
 		sys.exit()
@@ -41,20 +41,20 @@ if __name__=='__main__':
 
 		for fname in fitslist:
 			diskname = fname.replace( data_folder + folder_wle, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
-			if int( diskname.strip( 'disk_xyz') ) in NOfit:
-				print('Skipping NO-FIT target: ', fname , '\n')
+
+			if args["replot_only"]:
+				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
 			else:
-				#try:
-				generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
-					data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name)	
-				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], monosource=args['monosrc'],
-				  Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_name)
-				#except: print( 'skipping', diskname)
-				# try:
-				# 	os.chdir( savedir + diskname )
-				# 	bestfit_plots( diskname=diskname, T_exp=args['Texp'], ptgfile=ptgfile)
-				# except: print('No res for ', diskname)
-	
+				if int( diskname.strip( 'disk_xyz') ) in NOfit:
+					print('Skipping NO-FIT target: ', fname , '\n')
+				else:
+					#try:
+					generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
+						data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name)	
+					mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], monosource=args['monosrc'],
+					Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_name)
+					#except: print( 'skipping', diskname)
+
 	else:
 		try:
 			idx = int( args['diskname'] )		# if it's a number
@@ -63,17 +63,17 @@ if __name__=='__main__':
 			fname = data_folder + folder_wle + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
 		
 		diskname = fname.replace( data_folder + folder_wle, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
-		if int( diskname.strip( 'disk_xyz') ) in NOfit:
-			print('Skipping NO-FIT target: ', fname , '\n')
+
+		if args["replot_only"]:
+			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
 		else:
-			print( '\nRunning for: \t', diskname )
+			if int( diskname.strip( 'disk_xyz') ) in NOfit:
+				print('Skipping NO-FIT target: ', fname , '\n')
+			else:
+				print( '\nRunning for: \t', diskname )
 
-			generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
-					data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name )
+				generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
+						data_folder=data_folder+folder_wle, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name )
 
-			mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-					Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=1.5, wle=wle, config_name=config_name)
-
-			# bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
-
-
+				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
+						Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=1.5, wle=wle, config_name=config_name)
