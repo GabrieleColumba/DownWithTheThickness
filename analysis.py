@@ -79,7 +79,7 @@ def thick_flux( v, d, r_max, l_star):
 
 def alma_resolution( wle, config_name):
 	'''Return the FWHM resolution [arcsec] given the lambda [m] and the config.'''
-	L80_dict = {'6':1172.5, '7':1673.1, '8':3527.3 , '9':6482.6}	# 80 percentile baselines lenght [m]
+	L80_dict = {'4':369.2,'6':1172.5, '7':1673.1, '8':3527.3 , '9':6482.6}	# 80 percentile baselines lenght [m]
 	C_number = config_name[-1]		# take the config number
 	theta_res = 0.574 * wle / L80_dict[ C_number ]		# [rad]
 	return theta_res * 180 / np.pi * 3600	# [arcsec]
@@ -360,7 +360,7 @@ def OLD_produce_truths_df():
 
 def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
 	'''Compute disk mass in thin approximation but summing on annuli over the Robs, with Tung Temp profile and fitted I0_disk.'''
-	r_grid = np.logspace(-8, np.log10(R_obs), 50)		# [rad]
+	r_grid = np.logspace(-10, np.log10(R_obs), 100)		# [rad]
 	dF_grid = np.diff( gauss_flux_tot( 10**LI0_d, sma, r_grid ) )	# annulus-integrated flux density [Jy]
 	rmid = ( r_grid[:-1] + r_grid[1:] ) / 2 * dist.to_value(u.au)	# midpoint radii [au]
 	dM = ( dist.cgs.value )**2 / kappa * dF_grid  / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=rmid ) )
@@ -374,6 +374,7 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 	'''
 	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
 	k_sim = 0.54 if round(wle*1e3)==3 else 0.138	# opTool original opacity for the simulation truths
+	if round(wle*1e3)==1: k_sim = 3.5
 	k_obs = k_sim # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
 
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
@@ -410,8 +411,8 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 				
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)			# theoretical fully thick disk flux
-				# M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
-				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)
+				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+				# M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)
 
 			except: 
 				print('No bestfit params found for ', diskname)
@@ -446,7 +447,7 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 		theta = alma_resolution( wle=wle, config_name=config_name)
 		plot_radius_compare( res_df, theta, run_name )
 		thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
-
+		plt.close() 
 		# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	return res_df
 
@@ -775,12 +776,12 @@ if __name__=='__main__':
 	config_name = 'alma.cycle' + args['config']
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 
-	for t in [150, 200, 350]: #np.logspace( 2, 2.7, 5):
-		main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
+	#for t in [150, 200, 350]: #np.logspace( 2, 2.7, 5):
+	#	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
-	assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, figures=True )
-	fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
+	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 
 
