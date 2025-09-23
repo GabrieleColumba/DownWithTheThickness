@@ -502,7 +502,7 @@ def generate_skymodel( like_filename, data_folder='/Users/gcolumba/PostDoc_Mac/P
 def analytic_sensitivity( t):
 	'''
 	Analytical formula for the expected point-source sensitivity based on exposure time t. Based on ALMA Handbook (except w factor 0.5 as it does not agree with online tool).
-	t in seconds, the resulting sensitivity (rms) is in mJy.
+	t in seconds, the resulting sensitivity (rms) is in mJy. At 1mm underestimate the rms, but tclean stops anyway.
 	'''
 	T_sys = 74.262
 	A_eff = 113.1 * 0.715	# [m^2]		(0.71 for band 3 and 0.72 for band 1)
@@ -581,7 +581,7 @@ def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', 
 		# refdate = '2019/08/15' ,
 		totaltime= f'{T_exp}s' ,
 		thermalnoise= 'tsys-atm',
-		user_pwv= 0.7,  # 5.186,      # 5.186 @ 3,7mm, 0.7 @ 1mm
+		user_pwv= 0.7 if wle<2e-3 else 5.186,  # 5.186,      # 5.186 @ 3 & 7mm, 0.7 @ 1mm
 		overwrite = True,
 		graphics= 'file')
 	plt.close()
@@ -871,7 +871,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2c = np.array([11, 8.4, 0.2, 1.1, 15., 2.8, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
+	p0_2c = np.array([11, 8.4, 0.2, 1.0, 20., 2.8, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
 	p0_gauss = np.array([12, 6., 0.2, 80., 45., 0., 0.])		# Log(I0), Log(a), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c
