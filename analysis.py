@@ -106,29 +106,6 @@ def plot_opacity():
 	plt.show()
 
 
-# def plot_Fv_compare_mod( df, v_obs, kappa, rdata='sim', Tbb=122):
-
-# 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
-# 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, T=Tbb) / dist.cgs.value**2  *1e23		# [Jy] 
-# 	thin_flux_sim2 = df.M_sim/100 * const.M_sun.cgs.value * 0.54 * planck_bbody( v_obs, 
-# 								T= temp_profile_Tung(df.L_tot, r=df.R_sim) ) / dist.cgs.value**2  *1e23		# [Jy] 
-	
-# 	Rdata = df.R_obs if rdata=='obs' else df.R_sim		# use either just for plotting purposes
-# 	Fobs = df.F_obs * (1 - 0.7 * np.sin( np.deg2rad( df.i_sim)) )		# reduce obs flux by an amount prop to inc
-
-# 	ptitle = 'Flux_thickness_MOD'
-# 	fig, ax = plt.subplots( figsize=(7,4), tight_layout=True)
-# 	# ax.scatter( x=df.R_obs, y=df.F_thick, marker='s', c='k', label='Thick flux', alpha=0.8 )	# thick fluxes
-# 	# ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='x', c='gray', label='Thin flux from Msim (T=122K)', alpha=0.7)
-# 	ax.scatter( x=df.R_sim, y=F_thick_sim, marker='s', c='k', label='Thick flux from Rsim', alpha=0.7)
-# 	ax.scatter( x=df.R_sim, y=thin_flux_sim, marker='v', c='r', label='Thin flux from Msim (T Tung)', alpha=0.8)
-# 	ax.scatter( x=Rdata, y=Fobs, marker='o', c='g', label='Observed flux', alpha=0.7 )		# observed fluxes	# r OBS or SIM ??
-# 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
-# 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-# 	ax.legend( loc='lower right')
-# 	fig.savefig( ptitle + f'_k{kappa :.3f}' + '.png' , bbox_inches='tight')
-# 	plt.show()
-
 
 def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 
@@ -634,128 +611,221 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 # 	return logprior + log_likelihood( pars, galargs, two_comp, xsrc)
 
 
-def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_comp=False, backend_fname='last_sampler', append=False, extra_src=[0,0]):
-	'''
-	Launch an MCMC run for the galario fitting. 
-	galargs:  	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
-	p0: 		starting guess parameter vector
-	append=True will result in the continuation of previously saved chains
-	'''
-	ndim = len(p0)
-	startpos = None
+# def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_comp=False, backend_fname='last_sampler', append=False, extra_src=[0,0]):
+# 	'''
+# 	Launch an MCMC run for the galario fitting. 
+# 	galargs:  	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
+# 	p0: 		starting guess parameter vector
+# 	append=True will result in the continuation of previously saved chains
+# 	'''
+# 	ndim = len(p0)
+# 	startpos = None
 
-	bknd_samp = emcee.backends.HDFBackend( backend_fname + '.h5')		# store sampler on file
-	if append == False: 
-		bknd_samp.reset( nwalkers=nwalkers, ndim=ndim)
-		startpos = p0 + 1e-2* np.random.randn( nwalkers, ndim) 	# initialize the walkers with an nD Gaussian ball
-	else: print('\n Continuining previous chains from saved backend. \n')
+# 	bknd_samp = emcee.backends.HDFBackend( backend_fname + '.h5')		# store sampler on file
+# 	if append == False: 
+# 		bknd_samp.reset( nwalkers=nwalkers, ndim=ndim)
+# 		startpos = p0 + 1e-2* np.random.randn( nwalkers, ndim) 	# initialize the walkers with an nD Gaussian ball
+# 	else: print('\n Continuining previous chains from saved backend. \n')
 	
-	sampler = emcee.EnsembleSampler( nwalkers, ndim, log_probability, args=(p_ranges, galargs, two_comp, extra_src), 
-							# threads=nthreads, 
-							backend=bknd_samp, # live_dangerously=False, 
-			moves=[ (emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2),], 	# mv1
-			# moves=[ (emcee.moves.StretchMove(), 0.5), (emcee.moves.DEMove(), 0.5),], 		# mv2
-			# moves = emcee.moves.KDEMove(), 	# mv3	
-			)
+# 	sampler = emcee.EnsembleSampler( nwalkers, ndim, log_probability, args=(p_ranges, galargs, two_comp, extra_src), 
+# 							# threads=nthreads, 
+# 							backend=bknd_samp, # live_dangerously=False, 
+# 			moves=[ (emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2),], 	# mv1
+# 			# moves=[ (emcee.moves.StretchMove(), 0.5), (emcee.moves.DEMove(), 0.5),], 		# mv2
+# 			# moves = emcee.moves.KDEMove(), 	# mv3	
+# 			)
 	
-	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
-	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
-	# sampler.reset()
-	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True)			# full production run
-	return sampler
+# 	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
+# 	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
+# 	# sampler.reset()
+# 	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True)			# full production run
+# 	return sampler
 
 
-def clip_chains( samples, thresh=5):
-	'''
-	Discard the walkers that are more than thresh sigma away from the median.
-	'''
-	steps_median = np.median( samples, axis=0)		# median of all the steps for each walker
-	param_std = np.std( steps_median, axis=0)		# std of parameter posteriors
-	clip_idx = np.argwhere( (np.abs( steps_median - np.median( steps_median, axis=0) ) > thresh * param_std ).any( axis=1 ) )	# if exceeds thresh in any param
-	if len(clip_idx) > 0:
-		print( f'Clipping {len(clip_idx)} walkers that are more than {thresh} sigma away from the median.')
-		clipped = np.delete( samples, clip_idx, axis=1 )		# remove the chains of the outlying walkers
-		return clipped
-	else:
-		print( 'No walkers to clip.')
-		return samples
+# def clip_chains( samples, thresh=5):
+# 	'''
+# 	Discard the walkers that are more than thresh sigma away from the median.
+# 	'''
+# 	steps_median = np.median( samples, axis=0)		# median of all the steps for each walker
+# 	param_std = np.std( steps_median, axis=0)		# std of parameter posteriors
+# 	clip_idx = np.argwhere( (np.abs( steps_median - np.median( steps_median, axis=0) ) > thresh * param_std ).any( axis=1 ) )	# if exceeds thresh in any param
+# 	if len(clip_idx) > 0:
+# 		print( f'Clipping {len(clip_idx)} walkers that are more than {thresh} sigma away from the median.')
+# 		clipped = np.delete( samples, clip_idx, axis=1 )		# remove the chains of the outlying walkers
+# 		return clipped
+# 	else:
+# 		print( 'No walkers to clip.')
+# 		return samples
 
 
-def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, folder='./'):
-	'''
-	Show the traces of mcmc steps for sampler run and the corner plot.
-	'''
-	try:
-		# print( "Mean acceptance fraction: {0:.3f}".format( np.mean(samp_bkend.acceptance_fraction) ) )
-		tau = samp_bkend.get_autocorr_time( discard=int(burn_in), quiet=True)
-		print( 'autocorr time: \t', tau)
-		new_burn_in = int(2 * np.max(tau))      # discard the burn-in steps based on autocorrelation
-		# thinning = int(0.5 * np.min(tau))
-	except: 
-		print('It was not possible to determine the autocorrelation time tau')
-		pass
+# def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, folder='./'):
+# 	'''
+# 	Show the traces of mcmc steps for sampler run and the corner plot.
+# 	'''
+# 	try:
+# 		# print( "Mean acceptance fraction: {0:.3f}".format( np.mean(samp_bkend.acceptance_fraction) ) )
+# 		tau = samp_bkend.get_autocorr_time( discard=int(burn_in), quiet=True)
+# 		print( 'autocorr time: \t', tau)
+# 		new_burn_in = int(2 * np.max(tau))      # discard the burn-in steps based on autocorrelation
+# 		# thinning = int(0.5 * np.min(tau))
+# 	except: 
+# 		print('It was not possible to determine the autocorrelation time tau')
+# 		pass
 
-	samples = samp_bkend.get_chain( discard=int(burn_in) )
-	if walk_clip_thresh != None:
-		samples = clip_chains( samples, thresh=walk_clip_thresh)		# remove outlying walkers
-	flat_samples = samples.reshape( -1, len(labels) )		# discarding the burn-in steps in the first step before chains
+# 	samples = samp_bkend.get_chain( discard=int(burn_in) )
+# 	if walk_clip_thresh != None:
+# 		samples = clip_chains( samples, thresh=walk_clip_thresh)		# remove outlying walkers
+# 	flat_samples = samples.reshape( -1, len(labels) )		# discarding the burn-in steps in the first step before chains
 
-	fig, axes = plt.subplots( len(labels), figsize=(8, 8), sharex=True)			# CHAIN traces
-	for i in range( len(labels)):
-		ax = axes[i]
-		ax.plot( samples[:, :, i], "k", alpha=0.3)
-		ax.set_xlim(0, len(samples))
-		ax.set_ylabel( labels[i])
-		ax.yaxis.set_label_coords(-0.1, 0.5)
-	axes[-1].set_xlabel("step number")
-	# fig.savefig( folder + 'chains_steps' + fig_ext, dpi=400)
-	if figures: plt.show()
+# 	fig, axes = plt.subplots( len(labels), figsize=(8, 8), sharex=True)			# CHAIN traces
+# 	for i in range( len(labels)):
+# 		ax = axes[i]
+# 		ax.plot( samples[:, :, i], "k", alpha=0.3)
+# 		ax.set_xlim(0, len(samples))
+# 		ax.set_ylabel( labels[i])
+# 		ax.yaxis.set_label_coords(-0.1, 0.5)
+# 	axes[-1].set_xlabel("step number")
+# 	# fig.savefig( folder + 'chains_steps' + fig_ext, dpi=400)
+# 	if figures: plt.show()
+# 	plt.close()
+
+# 	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
+# 	fig = corner.corner(
+# 		flat_samples, labels=labels, quantiles=[0.16, 0.5, 0.84], # title_quantiles=[0.5],
+# 		show_titles=True, fig=cornfig, 
+# 		label_kwargs={'labelpad':20, 'fontsize':0}, #fontsize=8,
+# 		title_kwargs={"fontsize": 10, 'loc':'left'},	
+# 		)
+# 	# cornfig.savefig( folder + 'corner_plot' + fig_ext, bbox_inches='tight')
+# 	if figures: plt.show()
+# 	plt.close()
+
+# 	best_pars = np.percentile( flat_samples,  50, axis=0)     # best params out of fit
+# 	return best_pars
+
+
+# def inspect_plots( two_comp=True, sampler=None, burnin=None, walksigma=4, results_dir=''):
+# 	'''
+# 	inspect MCMC plots (chains + corner).
+# 	'''
+# 	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
+# 	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
+# 	labs_mc = labels_2c if two_comp else labels_gauss
+
+# 	disklist = sorted( glob.glob( results_dir + 'disk*') )
+# 	if disklist == []:    
+# 		print('NO FILES FOUND, check again the folder path!')
+# 		sys.exit()
+# 	print( len(disklist), 'files found')
+
+# 	for fpath in disklist:
+# 		os.chdir( fpath )
+# 		diskname = fpath.replace( results_dir, '' )
+# 		print( '\nInspecting:  ', diskname)
+# 		# disk_n = int(diskname.strip( '_yzx'))
+# 		# os.chdir( diskname )
+
+# 		if sampler is None:
+# 			sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
+# 		nsteps = sampler.get_chain().shape[0]
+# 		if burnin is None:
+# 			burnin = nsteps//3
+# 		bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=True )
+
+
+def plot_all_uvplots(results_dir, config_name, max_panels_per_row=4, uvtable_suffix='.noisy.uvtable', wle=0.003):
+	"""
+	Plot uvplots (real vis vs. uv-distance) for all disks in a given run directory using uvplot.UVTable.
+	Each disk's uvtable is expected to be in its own subdirectory.
+	"""
+	import uvplot as uvp
+
+	disk_dirs = sorted(glob.glob(os.path.join(results_dir, 'disk*')))
+	n_disks = len(disk_dirs)
+	if n_disks == 0:
+		print("No disk directories found in", results_dir)
+		return
+
+	ncols = min(max_panels_per_row, n_disks)
+	nrows = int(np.ceil(n_disks / ncols))
+	fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
+	axes = axes.flatten()
+
+	for idx, disk_dir in enumerate(disk_dirs):
+		diskname = os.path.basename(disk_dir)
+		uvtable_path = os.path.join(disk_dir, f"{diskname}.{config_name}{uvtable_suffix}")
+		if not os.path.exists(uvtable_path):
+			print(f"UVTable not found: {uvtable_path}")
+			continue
+
+		# Load uvtable using uvplot
+		try:
+			uvtab = uvp.UVTable(uvtable=uvtable_path, wle=wle, columns=uvp.COLUMNS_V0)
+		except Exception as e:
+			print(f"Could not load {uvtable_path}: {e}")
+			continue
+
+		# Plot on the corresponding axis
+		ax = axes[idx]
+		uvtab.plot(axes=[ax, None], label='Data', linestyle='.', color='k', yerr=True, uvbin_size=16e3)
+		ax.set_title(diskname)
+		ax.set_xlabel('uv-distance [λ]')
+		ax.set_ylabel('Real(V) [Jy]')
+		ax.set_xscale('log')
+		ax.set_yscale('log')
+		ax.grid(True, alpha=0.3)
+
+	# Hide unused axes
+	for ax in axes[n_disks:]:
+		ax.set_visible(False)
+
+	plt.tight_layout()
+	plt.show()
+
+def visib_ratios_plot():
+	import uvplot as uvp
+	resdir_7mm = '/home/PERSONALE/gabriele.columba/run/results/7mm/run_10800s_2c_xsrc/'
+	resdir_3mm = '/home/PERSONALE/gabriele.columba/run/results/3mm/run_7200s_2c_xsrc/'
+	resdir_1mm = '/home/PERSONALE/gabriele.columba/run/results/1mm/run_300s_2c_xsrc/'
+	disk_dirs = sorted(glob.glob( resdir_3mm + 'disk*'))
+	n_disks = len(disk_dirs)
+	ncols = 10
+	nrows = int(np.ceil( n_disks / ncols))
+	fig, axes = plt.subplots( nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
+	axes = axes.flatten()
+	
+	for i in range( n_disks):
+		diskname = os.path.basename( disk_dirs[i] )		# "diskNN_xx"
+		try:		# Load uvtable using uvplot
+			uvtab1 = uvp.UVTable( filename= resdir_1mm + diskname+'/uvtab.txt', columns=uvp.COLUMNS_V0)
+			uvtab3 = uvp.UVTable( filename= resdir_3mm + diskname+'/uvtab.txt', columns=uvp.COLUMNS_V0)
+			uvtab7 = uvp.UVTable( filename= resdir_7mm + diskname+'/uvtab.txt', columns=uvp.COLUMNS_V0)
+		except Exception as e:
+			print(f"Could not load uvtable for {diskname}: {e}")
+			continue
+
+		# observations uv-plot
+		uvt31 = uvp.UVTable( uvtable=[uvtab3.u/uvtab1.u, uvtab1.v, uvtab1.re, uvtab1.im, uvtab1.weights], columns=uvp.COLUMNS_V0 )
+		uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
+		uv.deproject( inc=0, PA=0, inplace=False)
+		axes = uv.plot( label='Data', linestyle='.', color='k', yerr=True, uvbin_size=uvbin_size )
+
+			red_chi2 = chi2/(nR - len(bestfit))
+			print( '\ngalario Chi^2: ', chi2, '\n reduced chi2: ', red_chi2 ,'\n\n' )
+			np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
+			amod = 1.
+			mod_lab = 'Best model'
+
+		# model uv-plot
+		uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_model.real, vis_model.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+		uv_mod.apply_phase( -dRA, -dDec)     # center the source on the phase center
+		uv_mod.deproject( inc=0, PA=0, inplace=False)
+		uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=amod, label=mod_lab, yerr=False, uvbin_size=uvbin_size)
+
+	axes[0].axes.set( xscale='log', yscale='log')
+	axes[1].axes.set( xscale='log')
+	axes[0].figure.savefig( 'uvplot_log' + fig_ext)
 	plt.close()
-
-	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
-	fig = corner.corner(
-		flat_samples, labels=labels, quantiles=[0.16, 0.5, 0.84], # title_quantiles=[0.5],
-		show_titles=True, fig=cornfig, 
-		label_kwargs={'labelpad':20, 'fontsize':0}, #fontsize=8,
-		title_kwargs={"fontsize": 10, 'loc':'left'},	
-		)
-	# cornfig.savefig( folder + 'corner_plot' + fig_ext, bbox_inches='tight')
-	if figures: plt.show()
-	plt.close()
-
-	best_pars = np.percentile( flat_samples,  50, axis=0)     # best params out of fit
-	return best_pars
-
-
-def inspect_plots( two_comp=True, sampler=None, burnin=None, walksigma=4, results_dir=''):
-	'''
-	inspect MCMC plots (chains + corner).
-	'''
-	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
-	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
-	labs_mc = labels_2c if two_comp else labels_gauss
-
-	disklist = sorted( glob.glob( results_dir + 'disk*') )
-	if disklist == []:    
-		print('NO FILES FOUND, check again the folder path!')
-		sys.exit()
-	print( len(disklist), 'files found')
-
-	for fpath in disklist:
-		os.chdir( fpath )
-		diskname = fpath.replace( results_dir, '' )
-		print( '\nInspecting:  ', diskname)
-		# disk_n = int(diskname.strip( '_yzx'))
-		# os.chdir( diskname )
-
-		if sampler is None:
-			sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
-		nsteps = sampler.get_chain().shape[0]
-		if burnin is None:
-			burnin = nsteps//3
-		bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=True )
-
-
 
 if __name__=='__main__':
 
