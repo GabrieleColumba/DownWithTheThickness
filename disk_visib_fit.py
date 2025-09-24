@@ -1,7 +1,6 @@
 # # # Full pipeline to mock obs + galario fit. 
 
 import glob
-import sys
 from local_variables import *		# file with the local path pointers and cpu settings
 from visibfit_functions import *
 import argparse

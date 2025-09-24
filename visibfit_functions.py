@@ -357,7 +357,7 @@ def clip_chains( samples, thresh=5):
 		return samples
 
 
-def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, folder='./'):
+def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, folder=''):
 	'''
 	Show the traces of mcmc steps for sampler run and the corner plot.
 	'''
