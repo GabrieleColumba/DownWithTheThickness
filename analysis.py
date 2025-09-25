@@ -580,130 +580,6 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 
 
 
-# def log_likelihood(theta, x, y, yerr):
-#     m, b, log_f = theta
-#     model = m * x + b
-#     sigma2 = yerr**2 + model**2 * np.exp(2 * log_f)
-#     return -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))
-# def log_likelihood( pars, galargs, two_comp, xsrc): 
-# 	'''Galario fit chi2 likelihood function'''
-# 	chi2 = galario_fit( pars=pars, galargs=galargs, two_comp=two_comp, extra_sources=xsrc )[1]
-# 	return -0.5 * chi2
-
-# def log_prior( pars, p_ranges, two_comp): 
-# 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
-# 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
-# 		if two_comp == True:
-# 			# if ( 2* pars[3] < pars[4]):		# impose that 2 Ri < Rout  (pars[2] <= pars[3]): 
-# 			return 0.0
-# 			# else: return -np.inf
-# 		else:
-# 			if (pars[1] <= pars[0]): 				# impose that Idisk > Ienv
-# 				return 0.0
-# 			else: return -np.inf	
-# 	else:	
-# 		return -np.inf
-
-# def log_probability( pars, p_ranges, galargs, two_comp, xsrc):
-# 	logprior = log_prior( pars=pars, p_ranges=p_ranges, two_comp=two_comp)
-# 	if not np.isfinite( logprior):
-# 		return -np.inf
-# 	return logprior + log_likelihood( pars, galargs, two_comp, xsrc)
-
-
-# def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_comp=False, backend_fname='last_sampler', append=False, extra_src=[0,0]):
-# 	'''
-# 	Launch an MCMC run for the galario fitting. 
-# 	galargs:  	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
-# 	p0: 		starting guess parameter vector
-# 	append=True will result in the continuation of previously saved chains
-# 	'''
-# 	ndim = len(p0)
-# 	startpos = None
-
-# 	bknd_samp = emcee.backends.HDFBackend( backend_fname + '.h5')		# store sampler on file
-# 	if append == False: 
-# 		bknd_samp.reset( nwalkers=nwalkers, ndim=ndim)
-# 		startpos = p0 + 1e-2* np.random.randn( nwalkers, ndim) 	# initialize the walkers with an nD Gaussian ball
-# 	else: print('\n Continuining previous chains from saved backend. \n')
-	
-# 	sampler = emcee.EnsembleSampler( nwalkers, ndim, log_probability, args=(p_ranges, galargs, two_comp, extra_src), 
-# 							# threads=nthreads, 
-# 							backend=bknd_samp, # live_dangerously=False, 
-# 			moves=[ (emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2),], 	# mv1
-# 			# moves=[ (emcee.moves.StretchMove(), 0.5), (emcee.moves.DEMove(), 0.5),], 		# mv2
-# 			# moves = emcee.moves.KDEMove(), 	# mv3	
-# 			)
-	
-# 	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
-# 	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
-# 	# sampler.reset()
-# 	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True)			# full production run
-# 	return sampler
-
-
-# def clip_chains( samples, thresh=5):
-# 	'''
-# 	Discard the walkers that are more than thresh sigma away from the median.
-# 	'''
-# 	steps_median = np.median( samples, axis=0)		# median of all the steps for each walker
-# 	param_std = np.std( steps_median, axis=0)		# std of parameter posteriors
-# 	clip_idx = np.argwhere( (np.abs( steps_median - np.median( steps_median, axis=0) ) > thresh * param_std ).any( axis=1 ) )	# if exceeds thresh in any param
-# 	if len(clip_idx) > 0:
-# 		print( f'Clipping {len(clip_idx)} walkers that are more than {thresh} sigma away from the median.')
-# 		clipped = np.delete( samples, clip_idx, axis=1 )		# remove the chains of the outlying walkers
-# 		return clipped
-# 	else:
-# 		print( 'No walkers to clip.')
-# 		return samples
-
-
-# def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, folder='./'):
-# 	'''
-# 	Show the traces of mcmc steps for sampler run and the corner plot.
-# 	'''
-# 	try:
-# 		# print( "Mean acceptance fraction: {0:.3f}".format( np.mean(samp_bkend.acceptance_fraction) ) )
-# 		tau = samp_bkend.get_autocorr_time( discard=int(burn_in), quiet=True)
-# 		print( 'autocorr time: \t', tau)
-# 		new_burn_in = int(2 * np.max(tau))      # discard the burn-in steps based on autocorrelation
-# 		# thinning = int(0.5 * np.min(tau))
-# 	except: 
-# 		print('It was not possible to determine the autocorrelation time tau')
-# 		pass
-
-# 	samples = samp_bkend.get_chain( discard=int(burn_in) )
-# 	if walk_clip_thresh != None:
-# 		samples = clip_chains( samples, thresh=walk_clip_thresh)		# remove outlying walkers
-# 	flat_samples = samples.reshape( -1, len(labels) )		# discarding the burn-in steps in the first step before chains
-
-# 	fig, axes = plt.subplots( len(labels), figsize=(8, 8), sharex=True)			# CHAIN traces
-# 	for i in range( len(labels)):
-# 		ax = axes[i]
-# 		ax.plot( samples[:, :, i], "k", alpha=0.3)
-# 		ax.set_xlim(0, len(samples))
-# 		ax.set_ylabel( labels[i])
-# 		ax.yaxis.set_label_coords(-0.1, 0.5)
-# 	axes[-1].set_xlabel("step number")
-# 	# fig.savefig( folder + 'chains_steps' + fig_ext, dpi=400)
-# 	if figures: plt.show()
-# 	plt.close()
-
-# 	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
-# 	fig = corner.corner(
-# 		flat_samples, labels=labels, quantiles=[0.16, 0.5, 0.84], # title_quantiles=[0.5],
-# 		show_titles=True, fig=cornfig, 
-# 		label_kwargs={'labelpad':20, 'fontsize':0}, #fontsize=8,
-# 		title_kwargs={"fontsize": 10, 'loc':'left'},	
-# 		)
-# 	# cornfig.savefig( folder + 'corner_plot' + fig_ext, bbox_inches='tight')
-# 	if figures: plt.show()
-# 	plt.close()
-
-# 	best_pars = np.percentile( flat_samples,  50, axis=0)     # best params out of fit
-# 	return best_pars
-
-
 # def inspect_plots( two_comp=True, sampler=None, burnin=None, walksigma=4, results_dir=''):
 # 	'''
 # 	inspect MCMC plots (chains + corner).
@@ -733,99 +609,64 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 # 		bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=True )
 
 
-def plot_all_uvplots(results_dir, config_name, max_panels_per_row=4, uvtable_suffix='.noisy.uvtable', wle=0.003):
-	"""
-	Plot uvplots (real vis vs. uv-distance) for all disks in a given run directory using uvplot.UVTable.
-	Each disk's uvtable is expected to be in its own subdirectory.
-	"""
-	import uvplot as uvp
-
-	disk_dirs = sorted(glob.glob(os.path.join(results_dir, 'disk*')))
-	n_disks = len(disk_dirs)
-	if n_disks == 0:
-		print("No disk directories found in", results_dir)
-		return
-
-	ncols = min(max_panels_per_row, n_disks)
-	nrows = int(np.ceil(n_disks / ncols))
-	fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
-	axes = axes.flatten()
-
-	for idx, disk_dir in enumerate(disk_dirs):
-		diskname = os.path.basename(disk_dir)
-		uvtable_path = os.path.join(disk_dir, f"{diskname}.{config_name}{uvtable_suffix}")
-		if not os.path.exists(uvtable_path):
-			print(f"UVTable not found: {uvtable_path}")
-			continue
-
-		# Load uvtable using uvplot
-		try:
-			uvtab = uvp.UVTable(uvtable=uvtable_path, wle=wle, columns=uvp.COLUMNS_V0)
-		except Exception as e:
-			print(f"Could not load {uvtable_path}: {e}")
-			continue
-
-		# Plot on the corresponding axis
-		ax = axes[idx]
-		uvtab.plot(axes=[ax, None], label='Data', linestyle='.', color='k', yerr=True, uvbin_size=16e3)
-		ax.set_title(diskname)
-		ax.set_xlabel('uv-distance [λ]')
-		ax.set_ylabel('Real(V) [Jy]')
-		ax.set_xscale('log')
-		ax.set_yscale('log')
-		ax.grid(True, alpha=0.3)
-
-	# Hide unused axes
-	for ax in axes[n_disks:]:
-		ax.set_visible(False)
-
-	plt.tight_layout()
-	plt.show()
-
 def visib_ratios_plot():
+	'''
+	Visualise for ALL targets in our sample the ratios of the Re(V) as function of the baseline between 1,3,7mm. 
+	'''
 	import uvplot as uvp
+	from scipy.interpolate import Akima1DInterpolator
+	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7, 'figure.dpi':200})
 	resdir_7mm = '/home/PERSONALE/gabriele.columba/run/results/7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = '/home/PERSONALE/gabriele.columba/run/results/3mm/run_7200s_2c_xsrc/'
+	resdir_3mm = '/home/PERSONALE/gabriele.columba/run/results/3mm/old_2c/run_7200s_2c_xsrc/'
 	resdir_1mm = '/home/PERSONALE/gabriele.columba/run/results/1mm/run_300s_2c_xsrc/'
-	disk_dirs = sorted(glob.glob( resdir_3mm + 'disk*'))
+	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
-	ncols = 10
-	nrows = int(np.ceil( n_disks / ncols))
-	fig, axes = plt.subplots( nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
+	ncols = 10 ; nrows = int(np.ceil( n_disks / ncols))
+	ptitle = 'Ratios of Re(V)'
+	fig, axes = plt.subplots( nrows, ncols, figsize=(1.7*ncols, 2*nrows), squeeze=False, sharex=True, sharey=True)
 	axes = axes.flatten()
-	
+
+	# uvds = r31s = r73s = []
 	for i in range( n_disks):
 		diskname = os.path.basename( disk_dirs[i] )		# "diskNN_xx"
 		try:		# Load uvtable using uvplot
-			uvtab1 = uvp.UVTable( filename= resdir_1mm + diskname+'/uvtab.txt', columns=uvp.COLUMNS_V0)
-			uvtab3 = uvp.UVTable( filename= resdir_3mm + diskname+'/uvtab.txt', columns=uvp.COLUMNS_V0)
-			uvtab7 = uvp.UVTable( filename= resdir_7mm + diskname+'/uvtab.txt', columns=uvp.COLUMNS_V0)
+			uvtab1 = uvp.UVTable( filename= resdir_1mm + diskname+'/uvtab.txt', wle=0.89e-3, columns=uvp.COLUMNS_V0)
+			uvtab3 = uvp.UVTable( filename= resdir_3mm + diskname+'/uvtab.txt', wle=3e-3, columns=uvp.COLUMNS_V0)
+			uvtab7 = uvp.UVTable( filename= resdir_7mm + diskname+'/uvtab.txt', wle=7e-3, columns=uvp.COLUMNS_V0)
 		except Exception as e:
-			print(f"Could not load uvtable for {diskname}: {e}")
+			print(f"\nCould not load uvtable for {diskname}: {e}\n")
 			continue
+		
+		binsize = 40e3 	# [n lambda units]
+		uvtab1.uvbin( binsize) ; uvtab3.uvbin( binsize) ; uvtab7.uvbin( binsize) ; 	# bin all visibs with same relative scales
+		uvdist3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+		re3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_re, np.nan) 			# reference REAL values to compute ratios
+		re1 = Akima1DInterpolator( uvtab1.bin_uvdist, uvtab1.bin_re)( uvdist3 )	# interpolate the real part where the ref value are binned
+		re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re)( uvdist3 )
+		re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
+		rr31 = re3 / re1
+		rr71 = re7 / re1		# the ratios, with longer wle on top
+		rr73 = re7 / re3
 
-		# observations uv-plot
-		uvt31 = uvp.UVTable( uvtable=[uvtab3.u/uvtab1.u, uvtab1.v, uvtab1.re, uvtab1.im, uvtab1.weights], columns=uvp.COLUMNS_V0 )
-		uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
-		uv.deproject( inc=0, PA=0, inplace=False)
-		axes = uv.plot( label='Data', linestyle='.', color='k', yerr=True, uvbin_size=uvbin_size )
+		# fig, ax = plt.subplots()
+		axes[i].plot( uvdist3 *3e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='7mm/1mm', alpha=0.6 )
+		axes[i].plot( uvdist3 *3e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='7mm/3mm' )		# all three ratios in same subplot for each target
+		axes[i].plot( uvdist3 *3e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='3mm/1mm', alpha=0.85 )
+		axes[i].set( xscale='log', yscale='log', ylim=[1e-3,10]) ; axes[i].set_title( diskname, fontsize=8)
+		#plt.show()
+		# uv.apply_phase( -dRA, -dDec)         # center the source on the phase center ???
+		# np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
 
-			red_chi2 = chi2/(nR - len(bestfit))
-			print( '\ngalario Chi^2: ', chi2, '\n reduced chi2: ', red_chi2 ,'\n\n' )
-			np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
-			amod = 1.
-			mod_lab = 'Best model'
-
-		# model uv-plot
-		uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_model.real, vis_model.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
-		uv_mod.apply_phase( -dRA, -dDec)     # center the source on the phase center
-		uv_mod.deproject( inc=0, PA=0, inplace=False)
-		uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=amod, label=mod_lab, yerr=False, uvbin_size=uvbin_size)
-
-	axes[0].axes.set( xscale='log', yscale='log')
-	axes[1].axes.set( xscale='log')
-	axes[0].figure.savefig( 'uvplot_log' + fig_ext)
+	for ax in axes[n_disks:]:	# hide unused axes
+		ax.set_visible(False)
+	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
+	fig.supylabel('Re(V) [Jy]', weight='bold', x=0.08, fontsize=12 )
+	fig.supxlabel('uv-distance [m]', weight='bold', fontsize=12 )
+	axes[0].legend()
+	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
+
+
 
 if __name__=='__main__':
 
