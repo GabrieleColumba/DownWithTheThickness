@@ -75,10 +75,10 @@ def Plummer_envelope( R, I0, Ri, Rout, p_index ):
 	return I
 
 
-def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
+def galario_model( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	'''
 	Let galario generate a model on the visibilities and return a Chi2 to the data.
-	pars: LI0d, (LI0e), sigma, (Ri, /Ri, p_index,) inc, PA, dRA, dDec  , (): if two_comp is True
+	pars: LI0d, (LI0e), sigma, (Ri, Rout/Ri, p_index,) inc, PA, dRA, dDec  , (): if two_comp is True
 	galargs:  Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
 	two_comp: whether to use the only a gaussian (False) or gauss + plummer (True)
 	extra_sources: ([model array of non-central sources], pixscale ) 
@@ -104,11 +104,11 @@ def galario_fit( pars, galargs, two_comp=True, extra_sources=[0,0]):
 		I_env = Plummer_envelope( R, I0e, Ri, Rout, p_index)	# Brightness profile of the envelope 
 		target_model = gd.sweep( I_disk, Rmin, dR, nxy, dxy, inc=inc) + gd.sweep( I_env, Rmin, dR, nxy, dxy, inc=0) 	# [Jy/pix]
 	else: 
-		# model = I_disk # + a		# a is an additional constant for background
-		target_model = gd.sweep( I_disk, Rmin, dR, nxy, dxy, inc=inc) + gd.sweep( np.full_like(I_disk, I0e), Rmin, dR, nxy, dxy, inc=0)	# sphere is isotropic
+		target_model = gd.sweep( I_disk + I0e, Rmin, dR, nxy, dxy, inc=inc)		# I0e here is an additional constant for background
+		# target_model = gd.sweep( I_disk, Rmin, dR, nxy, dxy, inc=inc) + gd.sweep( np.full_like(I_disk, I0e), Rmin, dR, nxy, dxy, inc=0)	# sphere is isotropic
 
 	# Compute visibilities for the central target that requires rotation and offsets (with PA, inc, dRA, dDec)
-	vis_target = gd.sampleImage( target_model, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False)
+	vis_target = gd.sampleImage( target_model, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')		# , origin='lower' wtf ?
 
 	# Compute visibilities for the extra sources (no rotation/offset)
 	if np.any( extra_sources[0] ):
@@ -129,7 +129,7 @@ def copy_extra_sources( diskname, nRMS=1.5, config_name='' ):
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image' )		# noisy image 
+	table.open( f'{diskname}.{config_name}.noisy.image.flat' )		# noisy image 
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 			# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']	# a, b and PA of beam
 	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
@@ -142,7 +142,7 @@ def copy_extra_sources( diskname, nRMS=1.5, config_name='' ):
 	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
-	nimg_masked = deconvolved.copy() # np.where( noisy_img > thresh, deconvolved, 0)		# keep everything above n*RMS or take the full deconvolution
+	nimg_masked = np.where( noisy_img > thresh, deconvolved, 0)		# deconvolved.copy() # keep everything above n*RMS or take the full deconvolution
 	
 	sources_df = pd.DataFrame( regionprops_table( label_image,
 		properties=('centroid', 'orientation', 'axis_major_length', 'axis_minor_length', 'equivalent_diameter_area'), ) ).rename(
@@ -286,7 +286,7 @@ def fit_extra_sources( diskname, figures=True):
 
 def log_likelihood( pars, galargs, two_comp, xsrc): 
 	'''Galario fit chi2 likelihood function'''
-	chi2 = galario_fit( pars=pars, galargs=galargs, two_comp=two_comp, extra_sources=xsrc )[1]
+	chi2 = galario_model( pars=pars, galargs=galargs, two_comp=two_comp, extra_sources=xsrc )[1]
 	return -0.5 * chi2
 
 def log_prior( pars, p_ranges, two_comp): 
@@ -466,29 +466,30 @@ def cancel_extra_sources( skymodel, nRMS=1, figure=False ):
 	return sky_masked
 
 
-def generate_skymodel( like_filename, data_folder='/Users/gcolumba/PostDoc_Mac/PostProc/simulations/3mm/' ):
+def generate_skymodel( dRA, dDec, a, b, like_filename='disk17_xy_3000um.fits', data_folder='/Users/gcolumba/PostDoc_Mac/PostProc/simulations/3mm/' ):
 	'''Create a sky model with a target and some extra sources for mock observations.
 	like_filename: a fits file (path) with the sky model to be used as a template.'''
 	hdul = fits.open( data_folder + like_filename )
 	hdul.info()
 	hdr = hdul[0].header
-	pixscale = hdr['CDELT1']	# deg / pix
+	pixscale = hdr['CDELT1']	# [deg / pix] , copying it from the "real" skymodel
 	modelshape = hdul[0].data.shape
 	arr = np.zeros( shape= modelshape, dtype=np.float32)		# 4895x4895 pixels, as the 3mm sky models
 	
 	# create a gaussian target with an offset
-	dDec, dRA = -0 / (pixscale*3600), 0 / (pixscale*3600)		# [arcsec] to pixel offset
-	target = twoD_Gaussian( img_size=arr.shape, I0=9e-3, xo=arr.shape[0]//2 + dRA, yo=arr.shape[1]//2 + dDec,
-		sigma_x=5, sigma_y=15, theta=np.pi/6, offset=1e-10)		# [Jy/pix]
+	dDec_pix, dRA_pix = dDec / (pixscale*3600), dRA / (pixscale*3600)		# [arcsec] to pixel offset
+	PA = np.pi / 9 	#; b = 7 ; a = 12 ; 
+	target = twoD_Gaussian( img_size=arr.shape, I0=9e-3, xo=arr.shape[0]/2 + dRA_pix, yo=arr.shape[1]/2 + dDec_pix,
+		sigma_x=b, sigma_y=a, theta=-PA, offset=1e-10)		# [Jy/pix]	theta < 0 corresponds to a countclock rotation of the disk
 	arr += target.reshape( arr.shape )		# add the target to the array
 
 	# # then add other sources along a vertical line from the target to the top of the image with equal spacing and brightness
-	# nsources = 5		# number of sources to add
-	# for i in range( 1, nsources + 1):
-	# 	dDec = modelshape[0]/6 / (nsources + 1) * i		# pixel offsets
-	# 	source = twoD_Gaussian( img_size=arr.shape, I0=5e-4, xo=arr.shape[0]/2 + 0, yo=arr.shape[1]/2 + dDec,
-	# 		sigma_x=5, sigma_y=5, theta=0, offset=0)		# [Jy/pix]
-	# 	arr += source.reshape( arr.shape )		# add the target to the array
+	nsources = 4		# number of sources to add
+	for i in range( 1, nsources + 1):
+		dDec_pix = modelshape[0]/6 / (nsources + 1) * i		# pixel offsets
+		extrasource = twoD_Gaussian( img_size=arr.shape, I0=7e-4, xo=arr.shape[0]/2 + 0, yo=arr.shape[1]/2 + dDec_pix,
+			sigma_x=5, sigma_y=5, theta=0, offset=0)		# [Jy/pix]
+		arr += extrasource.reshape( arr.shape )		# add the target to the array
 	
 	plt.imshow( arr, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
 	plt.colorbar( label='Jy/pix')
@@ -496,7 +497,9 @@ def generate_skymodel( like_filename, data_folder='/Users/gcolumba/PostDoc_Mac/P
 	# save the model to fits
 	hdr['CTYPE1'] = 'RA---SIN'		# set the header keywords
 	hdr['CTYPE2'] = 'DEC--SIN'
-	fits.writeto( data_folder + 'disk04test00_xy_3000um.fits', data=arr, header=hdr, overwrite=True)
+	hdr['INFOMAIN'] = (f'dRA: {dRA :.1f}  [arcsec], dDec: {dDec :.1f},  ' 
+					+ f' PA: {np.rad2deg(PA) :.1f} [deg], inc: {np.rad2deg(np.arccos(b/a)) :.1f} ')
+	fits.writeto( data_folder + 'disk03_zz_3000um.fits', data=arr, header=hdr, overwrite=True)
 
 
 def analytic_sensitivity( t):
@@ -527,7 +530,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 
 	main_beam = np.rad2deg( 1.13 * wle / 12	)		# [deg]	,  0.01618 deg to have a FoV as the main beam at 3mm
 	pixcut = int( main_beam / pixscale / 2 )				# margin in pixel
-	skycut = crop_image( sky_image, margins=[ pixcut, pixcut])[:-1, :-1]		# make it even 
+	skycut = crop_image( sky_image, margins=[ pixcut, pixcut])[1:, 1:]		# make it even 
 
 	if damp:
 		print('\nArtificially damping the sky beyond the MRS\n')
@@ -543,7 +546,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	if monosource:
 		skycut = cancel_extra_sources( skycut, nRMS=nRMS, figure=True)
 
-	hdr['CRPIX1'] = hdr['CRPIX2'] = pixcut
+	hdr['CRPIX1'] = hdr['CRPIX2'] = skycut.shape[0] / 2
 	hdr['CRVAL1'] = 246.6175 ; hdr['CRVAL2'] = -24.4017		# so that central pixel corresponds to centre of pointing file 1x
 	hdr['CTYPE1'] = 'RA---SIN'; hdr['CTYPE2'] = 'DEC--SIN'; 		# uniform it to CASA products
 	fits.writeto( 'skycut.fits', skycut, header=hdr, overwrite=True)
@@ -606,9 +609,66 @@ def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', 
 		# ctk.split( vis= vistab_name, keepflags=False, outputvis=vistab_name + '.binned', timebin='30s', datacolumn='all')
 		casa_table = cto.table()
 		casa_table.open( vistab_name ) #  + '.binned' )
-		uvp.io.export_uvtable( 'uvtab.txt', tb=casa_table, vis=vistab_name, datacolumn='DATA') # CORRECTED_DATA ? Beware final residuals computation
+		uvp.io.export_uvtable( 'uvtab.txt', tb=casa_table, vis=vistab_name, datacolumn='CORRECTED_DATA') # CORRECTED_DATA ? Beware final residuals computation
 		casa_table.close()
 	print( '\nMock observation completed !\n')
+
+
+def mockobs_for_residuals( diskname, T_exp, ptgfile='', wle=mm3, config_name=''):
+	''' MOCK OBS the best model to produce RESIDUALS map in the sky. '''
+	ctk.importfits( fitsimage= 'best_model.fits', imagename='model.imag', overwrite=True)
+	ctk.imhead( imagename='model.imag', mode='put', hdkey='bunit', hdvalue='Jy/pixel')		# Edit image header
+
+	# Generate synthetic visibilities
+	dirname = 'model_mockobs'  	# a separate folder
+	os.chdir( '../' )
+
+	ctk.simobserve( project=dirname ,
+		skymodel= f'{dirname}/model.imag' ,
+		setpointings= False,  
+		ptgfile= ptgfile, 
+		incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
+		inwidth = '7.5GHz' ,
+		antennalist= config_name + '.cfg',
+		totaltime= f'{T_exp}s' ,
+		thermalnoise= 'tsys-atm',
+		user_pwv= 0.7 if wle<2e-3 else 5.186,  # 5.186,      # 5.186 @ 3 & 7mm, 0.7 @ 1mm
+		overwrite = True,
+		graphics= 'file')
+	plt.close()
+
+	# Image and analyze the simulated visibilities
+	ctk.simanalyze( project=dirname ,
+		vis= f'{dirname}/{dirname}.{config_name}.noisy.ms' ,
+		imsize = [0,0] , 	# [0 ,0] means model image will be matched
+		cell= '' , 			# empty string means model cell size is to be used
+		niter = 10000,
+		interactive = False ,
+		threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
+		weighting = 'briggs',
+		analyze= True,
+		graphics= 'file')
+	plt.close()
+
+	ctab = cto.table()
+	ctab.open( f'{diskname}.{config_name}.noisy.image' )
+	noisy_img = ctab.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
+	pixscale = abs( ctab.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
+	ctab.open( f'{dirname}/{dirname}.{config_name}.noisy.image' )		# the one created above, in [Jy/beam]
+	best_img = ctab.getcol('map').squeeze().copy( order='F') 		# best model img	
+	ctab.close()
+
+	res = (noisy_img - best_img ) / rms( noisy_img)		# " A MANO "
+	ptitle = 'Bestfit residuals (simobs)'
+	fig, ax = plt.subplots( figsize=(6,6))  
+	ci = ax.imshow( res.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model 
+	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
+	ax.axis( 'off' )
+	fig.colorbar( ci, ax=ax, label='RMS units')
+	plt.show()
+	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
+	plt.close()
+	print( 'Mock observation of model for residuals completed !\n')
 
 
 def rms( arr ):
@@ -628,33 +688,39 @@ def min_bkg_rms( image):
 	return min( min(bkg_rms), rms(image) )
 
 
-def residuals_vis_plot( diskname, model_vis, T_exp, config_name):
+def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	'''
 	Calculate the residuals between the visibilities of the mock observations and the bestfit model (galario + multisource).
 	'''
 	MSname = f'{diskname}.{config_name}.noisy.ms'		# mock obs MS
+	os.system( f'cp -R {MSname}/ NoisyMS_copy/')
 	casa_table = cto.table()
-	casa_table.open( MSname, nomodify=False )
-	modeldata = casa_table.getcol('MODEL_DATA')		# inherit the shape structure
-	modeldata[:] = model_vis 		# copy model visibilities broadcasted to correct shape
-	# casa_table.putcol( 'MODEL_DATA', modeldata )		# add the fitted model to the MS, here for residues (uvsub)
+	casa_table.open( 'NoisyMS_copy', nomodify=False )	# leave the original MS untouched
+	modeldata = casa_table.getcol('MODEL_DATA')			# inherit the shape structure
+	off = 0.035714		# [arcsec]  basically 1 pixel of noisy img
+	vis_shifted = gd.apply_phase_vis( dRA=np.deg2rad(-off /3600), dDec=np.deg2rad(-off/3600), u=galargs[5], v=galargs[6], vis=model_vis)	# alignment fix, offset = 1 pix
+	modeldata[:] = vis_shifted 		# copy model visibilities broadcasted to correct shape
 	casa_table.putcol( 'CORRECTED_DATA', modeldata )		# add the fitted model to the MS, here just to be imaged
 	casa_table.flush()
 	casa_table.open( f'{diskname}.{config_name}.noisy.image' )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
 	pixscale = abs( casa_table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
 	casa_table.close()
+	# from casatools import synthesisutils
+	# su = synthesisutils()
+	# su.getOptimumSize(345)
 
 	ctk.tclean(		# image the best model !
-		vis=MSname,
+		vis='NoisyMS_copy',
 		imagename='./bestmod/best_model',
 		datacolumn='corrected',  	# Use the corrected_data where we stored the model visibilities
-		imsize=noisy_img.shape,			# lo dice lui boh 1728 config 6
-		cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
+		imsize=noisy_img.shape,			# to then compare directly with noisy image
+		cell = f'{pixscale}rad',
+		# phasecenter=ptgfile,
 		weighting='briggs',
 		niter=10000, 	            # CLEANing, is this OK ?
 		nsigma=1,
-		# threshold= '5uJy', # f'{1* analytic_sens(t=T_exp) :.3f}uJy',
+		threshold= f'{ analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 	
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
@@ -680,40 +746,8 @@ def residuals_vis_plot( diskname, model_vis, T_exp, config_name):
 	# # plt.show()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
-	
-	casa_table.open( MSname, nomodify=False )
-	casa_table.putcol( 'MODEL_DATA', modeldata )		# add the fitted model to the MS, here for residues (uvsub)
-	casa_table.flush()
-	casa_table.close()
 
-	# ctk.clearcal( vis=MSname )		# copy DATA (mockobs) to CORR_DATA column before uvsub computes the residuals
-	# ctk.uvsub( vis= MSname )		# compute the RESIDUALS = CORR_DATA - MODEL and puts them in CORRECTED_DATA column
-	# ctk.tclean(		# image the residuals !
-	# 	vis=MSname,
-	# 	imagename='./bestmod/best_residuals',
-	# 	datacolumn='corrected',  	# Use the residuals
-	# 	imsize=noisy_img.shape,			# lo dice lui boh
-	# 	cell=f'{np.rad2deg(pixscale)*3600}arcsec',		# basically the pixscale
-	# 	weighting='briggs',
-	# 	niter=0, )
-	# 	# threshold=f'{1* analytic_sens(t=T_exp) :.3f}uJy')                # No CLEANing, just make the residuals image
-	
-	# casa_table.open( './bestmod/best_residuals.image' )		# the one created above, in [Jy/beam]
-	# res_img = casa_table.getcol('map').squeeze().copy( order='F') 		# residuals				
-	# casa_table.close()
-	# res_n = res_img / rms( noisy_img )	        # residuals in RMS ratio of the full size img!
-	# lim = np.quantile( res_n, [0.05, 0.95] )
-	# np.save( './best_model/' + 'residuals_n', res_n.T )
-
-	# ptitle = 'Residuals_lin (vis)'
-	# fig, ax = plt.subplots( figsize=(6,6))  
-	# ci = ax.imshow( res_n.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model  
-	# ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	# ax.axis( 'off' )
-	# fig.colorbar( ci, ax=ax, label='RMS units')
-	# # # plt.show()
-	# fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
-	# plt.close()
+	np.save( 'best_residuals', arr=res_hand.T )	# save to file
 	return
 
 
@@ -743,7 +777,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, ext
 		# compute the visibilities of the bestfit model
 		inc, PA, dRA, dDec = bestfit[-4:]
 		inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert !
-		target_model, chi2, vis_model = galario_fit( pars= bestfit, galargs=galargs, two_comp=two_comp, extra_sources=extra_sources )
+		target_model, chi2, vis_model = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp, extra_sources=extra_sources )
 		Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w = galargs
 		amod = 0.02
 		mod_lab = None
@@ -761,9 +795,9 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, ext
 				table.close()
 			
 			bestmod_image = resample_image( r_s_target, npix_new=npix, old_pixscale=dxy, new_pixscale=pixscale ) + extra_sources[0]		# resample to the sky data pixel scale
-			hdr = fits.Header({'CTYPE1':'RA---SIN', 'CRVAL1': 246.6175, 'CRPIX1': bestmod_image.shape[1]//2, 'CDELT1': np.rad2deg(pixscale), 'CUNIT':'degree', 
-					  		'CTYPE2':'DEC--SIN', 'CRVAL2': -24.4017, 'CRPIX2': bestmod_image.shape[0]//2, 'CDELT2': np.rad2deg(pixscale),
-					  		'DXY_orig': dxy, 'DR': dR, 'NR': nR})
+			hdr = fits.Header({'CTYPE1':'RA---SIN', 'CRVAL1': 246.6175, 'CRPIX1': bestmod_image.shape[1]/2, 'CDELT1': np.rad2deg(pixscale), 'CUNIT':'degree', 
+					  		'CTYPE2':'DEC--SIN', 'CRVAL2': -24.4017, 'CRPIX2': bestmod_image.shape[0]/2, 'CDELT2': np.rad2deg(pixscale),
+					  		'DXY_orig': dxy, 'DR': dR, 'NR': nR, 'Funit':'[Jy/pix]'})
 			fits.writeto( 'best_model.fits', bestmod_image[:, ::-1], overwrite=True, header=hdr)	# save it like skycut
 			
 			# observations uv-plot
@@ -813,7 +847,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	if extra_sources is None:
 		extra_sources = copy_extra_sources( diskname, nRMS, config_name ) if monosource==False else (0,0)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle, config_name=config_name)
-	residuals_vis_plot( diskname, mod_vis, T_exp, config_name )
+	residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
@@ -828,7 +862,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 
 
 
-def get_galargs( wle=mm3):
+def get_galargs( wle):
 	u, v, Re_obs, Im_obs, w = np.require( np.loadtxt( f'uvtab.txt', unpack=True), requirements='C')
 	u /= wle
 	v /= wle	# have the baselines in lambda units
@@ -851,19 +885,19 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 	extra_sources = copy_extra_sources( diskname, nRMS=nRMS, config_name=config_name ) if monosource==False else (0,0)		# deal with multiplicity in FoV
 
 	# parameter space domain
-	p_ranges_2 = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
+	p_ranges_2c = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
 						[7.8, 13.],		# Log10( IOenvelope)   
 						[1e-5, .8],		# sigma i.e. sma [arcsec]
 						[1e-4, 5],		# Ri [arcsec]
 						[2, 40],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
-						[1, 4],			# p_index []
+						[1, 3.5],		# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
 						[-2, 2]])		# dDec (arcsec)
 
 	p_ranges_gauss = np.array([[8, 15],	# Log10( I0 )	[Log(Jy/sr)]
-						[5, 11],		# Log(a) const 	[Log(Jy/sr)]
+						[3, 11],		# Log(a) const 	[Log(Jy/sr)]
 						[1e-5, .8],		# sigma i.e. sma 	[arcsec]
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
@@ -875,7 +909,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 	p0_gauss = np.array([12, 6., 0.2, 80., 45., 0., 0.])		# Log(I0), Log(a), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c
-		p_rang_mc = p_ranges_2
+		p_rang_mc = p_ranges_2c
 	else:
 		p0_mc = p0_gauss
 		p_rang_mc = p_ranges_gauss
