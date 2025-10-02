@@ -345,7 +345,7 @@ def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
 	return Mtot, dF_grid.sum() 
 
 
-def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=True):
+def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=False, figures=True):
 	'''
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
@@ -382,14 +382,15 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=T
 				R_90 = R_68 * 1.42                              # 90% radius
 				R_95 = R_68 * 1.62
 				R_obs = R_90     # as Tung 
-
-				F_v = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
-				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=10, config_name=config_name, results_dir=results_dir )
-				
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
+
+				if simple_M:
+					F_v = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
+					M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
+				else: 
+					M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
+				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=10, config_name=config_name, results_dir=results_dir )
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)			# theoretical fully thick disk flux
-				M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
-				# M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)
 
 			except: 
 				print('No bestfit params found for ', diskname)
@@ -644,14 +645,14 @@ def visib_ratios_plot():
 		re1 = Akima1DInterpolator( uvtab1.bin_uvdist, uvtab1.bin_re)( uvdist3 )	# interpolate the real part where the ref value are binned
 		re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re)( uvdist3 )
 		re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
-		rr31 = re3 / re1
-		rr71 = re7 / re1		# the ratios, with longer wle on top
-		rr73 = re7 / re3
+		rr31 = re1 / re3
+		rr71 = re1 / re7		# the ratios, with longer wle on top
+		rr73 = re3 / re7
 
 		# fig, ax = plt.subplots()
-		axes[i].plot( uvdist3 *3e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='7mm/1mm', alpha=0.6 )
-		axes[i].plot( uvdist3 *3e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='7mm/3mm' )		# all three ratios in same subplot for each target
-		axes[i].plot( uvdist3 *3e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='3mm/1mm', alpha=0.85 )
+		axes[i].plot( uvdist3 *1e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='1mm/7mm', alpha=0.6 )
+		axes[i].plot( uvdist3 *1e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
+		axes[i].plot( uvdist3 *1e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='1mm/3mm', alpha=0.85 )
 		axes[i].set( xscale='log', yscale='log', ylim=[1e-3,10]) ; axes[i].set_title( diskname, fontsize=8)
 		#plt.show()
 		# uv.apply_phase( -dRA, -dDec)         # center the source on the phase center ???
@@ -661,7 +662,7 @@ def visib_ratios_plot():
 		ax.set_visible(False)
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
 	fig.supylabel('Re(V) [Jy]', weight='bold', x=0.08, fontsize=12 )
-	fig.supxlabel('uv-distance [m]', weight='bold', fontsize=12 )
+	fig.supxlabel('uv-distance [k $\lambda$]', weight='bold', fontsize=12 )
 	axes[0].legend()
 	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
@@ -677,6 +678,7 @@ if __name__=='__main__':
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	parser.add_argument('-Tavg', type=int, default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
+	parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
 	args = vars( parser.parse_args() )
 
 	model_comps = '2c' if args['2c'] else 'g+'
@@ -691,7 +693,7 @@ if __name__=='__main__':
 	#	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
 	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
-	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, figures=True )
+	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, simple_M=args["simple_M"], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 
