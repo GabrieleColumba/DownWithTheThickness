@@ -61,11 +61,12 @@ if __name__=='__main__':
 		except:
 			fname = data_path + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
 		
-		diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 		if args["replot_only"]:	
+			diskname = fname.replace( savedir, '' )
 			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
 			sys.exit()		# replot and terminate before regressions
 
+		diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 		if int( diskname.strip( 'disk_xyz') ) in NOfit:
 			print('Skipping NO-FIT target: ', fname , '\n')
 		else:
