@@ -696,17 +696,19 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	MSname = f'{diskname}.{config_name}.noisy.ms'		# mock obs MS
 	os.system( f'cp -R {MSname}/ NoisyMS_copy/')
 	casa_table = cto.table()
-	casa_table.open( 'NoisyMS_copy', nomodify=False )	# leave the original MS untouched
-	modeldata = casa_table.getcol('MODEL_DATA')			# inherit the shape structure
-	vis_target, vis_xsrc = model_vis					# shift ONLY the target visibilities !
-	off = 0.035714		# [arcsec]  basically 1 pixel of noisy img
-	vis_shifted = gd.apply_phase_vis( dRA=np.deg2rad(-off /3600), dDec=np.deg2rad(-off/3600), u=galargs[5], v=galargs[6], vis=vis_target)	# alignment fix, offset = 1 pix
-	modeldata[:] = vis_shifted + vis_xsrc				# copy model visibilities broadcasted to correct shape
-	casa_table.putcol( 'CORRECTED_DATA', modeldata )		# add the fitted model to the MS, here just to be imaged
-	casa_table.flush()
 	casa_table.open( f'{diskname}.{config_name}.noisy.image' )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
 	pixscale = abs( casa_table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
+	casa_table.close()
+	casa_table.open( 'NoisyMS_copy', nomodify=False )	# leave the original MS untouched
+	modeldata = casa_table.getcol('MODEL_DATA')			# inherit the shape structure
+	vis_target, vis_xsrc = model_vis					# shift ONLY the target visibilities !
+	off = pixscale		# [rad]  basically 1 pixel of noisy img 0.035714 at 3mm and 1/5 at 1mm
+	vis_shifted = gd.apply_phase_vis( dRA= -off, dDec= -off, u=galargs[5], v=galargs[6], vis=vis_target)	# alignment fix, offset = 1 pix
+	modeldata[:] = vis_shifted + vis_xsrc				# copy model visibilities broadcasted to correct shape
+	casa_table.putcol( 'CORRECTED_DATA', modeldata )		# add the fitted model to the MS, here just to be imaged
+	casa_table.flush()
+
 	casa_table.close()
 
 	ctk.tclean(		# image the best model !
