@@ -113,15 +113,16 @@ def galario_model( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	# Compute visibilities for the extra sources (no rotation/offset)
 	if np.any( extra_sources[0] ):
 		vis_extra = gd.sampleImage( extra_sources[0], extra_sources[1], u, v, PA=0, dRA=0, dDec=0, origin='lower', check=False)	# different pixscale than target model!
-		vis_model = vis_target + vis_extra
+		vis_tot = vis_target + vis_extra
 	else:
-		vis_model = vis_target
+		vis_extra = [0]
+		vis_tot = vis_target
 	
 	# Compute chi2 in visibility space (should be equivalent to galario reduce_chi2())
 	# chi2 = gd.chi2Image( model, dxy, u, v, Re, Im, w, PA=PA, dRA=dRA, dDec=dDec )
-	chi2 = np.sum( w * ((vis_model.real - Re)**2 + (vis_model.imag - Im)**2) )
+	chi2 = np.sum( w * ((vis_tot.real - Re)**2 + (vis_tot.imag - Im)**2) )
 	# model_image = targ+ + extra_sources_model	# for visualization [Jy/pix]
-	return target_model, chi2, vis_model
+	return target_model, chi2, (vis_target, vis_extra)
 
 
 def copy_extra_sources( diskname, nRMS=1.5, config_name='' ):
@@ -697,18 +698,16 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	casa_table = cto.table()
 	casa_table.open( 'NoisyMS_copy', nomodify=False )	# leave the original MS untouched
 	modeldata = casa_table.getcol('MODEL_DATA')			# inherit the shape structure
+	vis_target, vis_xsrc = model_vis					# shift ONLY the target visibilities !
 	off = 0.035714		# [arcsec]  basically 1 pixel of noisy img
-	vis_shifted = gd.apply_phase_vis( dRA=np.deg2rad(-off /3600), dDec=np.deg2rad(-off/3600), u=galargs[5], v=galargs[6], vis=model_vis)	# alignment fix, offset = 1 pix
-	modeldata[:] = vis_shifted 		# copy model visibilities broadcasted to correct shape
+	vis_shifted = gd.apply_phase_vis( dRA=np.deg2rad(-off /3600), dDec=np.deg2rad(-off/3600), u=galargs[5], v=galargs[6], vis=vis_target)	# alignment fix, offset = 1 pix
+	modeldata[:] = vis_shifted + vis_xsrc				# copy model visibilities broadcasted to correct shape
 	casa_table.putcol( 'CORRECTED_DATA', modeldata )		# add the fitted model to the MS, here just to be imaged
 	casa_table.flush()
 	casa_table.open( f'{diskname}.{config_name}.noisy.image' )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
 	pixscale = abs( casa_table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
 	casa_table.close()
-	# from casatools import synthesisutils
-	# su = synthesisutils()
-	# su.getOptimumSize(345)
 
 	ctk.tclean(		# image the best model !
 		vis='NoisyMS_copy',
@@ -765,7 +764,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, extra_sources=[0,0], wle=mm3, config_name='' ):
+def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, extra_sources=[0,0], wle=mm3, config_name='' ):
 	''' Produce UVplots for all the bestfit solutions. '''
 	# uvbin_size = 30e3     # uv-distance bin, units: wle
 
@@ -777,7 +776,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, ext
 		# compute the visibilities of the bestfit model
 		inc, PA, dRA, dDec = bestfit[-4:]
 		inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert !
-		target_model, chi2, vis_model = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp, extra_sources=extra_sources )
+		target_model, chi2, vis_mods = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp, extra_sources=extra_sources )
 		Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w = galargs
 		amod = 0.02
 		mod_lab = None
@@ -803,7 +802,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, ext
 			# observations uv-plot
 			uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
 			uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
-			uv.deproject( inc=0, PA=0, inplace=False)
+			uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 			axes = uv.plot( label='Data', linestyle='.', color='k', yerr=True, uvbin_size=uvbin_size )
 
 			red_chi2 = chi2/(nR - len(bestfit))
@@ -813,17 +812,33 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=16e3, ext
 			mod_lab = 'Best model'
 
 		# model uv-plot
-		uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_model.real, vis_model.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+		vis_tot = vis_mods[0] + vis_mods[1]		# sum target and xsrc vis
+		uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_tot.real, vis_tot.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
 		uv_mod.apply_phase( -dRA, -dDec)     # center the source on the phase center
-		uv_mod.deproject( inc=0, PA=0, inplace=False)
+		uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 		uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=amod, label=mod_lab, yerr=False, uvbin_size=uvbin_size)
 
 	axes[0].axes.set( xscale='log', yscale='log')
 	axes[1].axes.set( xscale='log')
 	axes[0].figure.savefig( 'uvplot_log' + fig_ext)
 	plt.close()
-	return bestmod_image, vis_model
+	return bestmod_image, vis_mods
 
+# uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
+# uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
+# uvd = uv.deproject( inc=inc/deg, PA=PA/deg, inplace=False)
+# axes = uvd.plot( label='Data', linestyle='.', color='k', yerr=True, uvbin_size=uvbin_size )
+# amod = 1.
+# mod_lab = 'Best model'
+# # model uv-plot
+# vis_tot = vis_mods[0] + vis_mods[1]		# sum target and xsrc vis
+# uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_tot.real, vis_tot.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+# uv_mod.apply_phase( -dRA, -dDec)     # center the source on the phase center
+# uvd_mod = uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=False)
+# uvd_mod.plot( axes=axes, linestyle='-', color='r', alpha=amod, label=mod_lab, yerr=False, uvbin_size=uvbin_size)
+# axes[0].axes.set( xscale='log', yscale='log')
+# axes[1].axes.set( xscale='log')
+# plt.show()
 
 def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, nRMS=1.5, burnin=None, walksigma=4, wle=mm3, savedir='', config_name=''):
 	'''
