@@ -20,8 +20,8 @@ from skimage.morphology import closing, footprints
 from local_variables import *
 plt.rcParams.update({ 'font.size':11, 'legend.fontsize':9, 'figure.dpi':200})
 
-OKlist = np.array([17, 20, 30, 42, 43, 50, 52, 53, 57, 65, 67, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available (70, 29 no bc binary, 63 75 no bc no info in truths)
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
+OKlist = np.array([17, 20, 30, 42, 43, 50, 52, 53, 57, 65, 67, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available (70, 29 no bc binary, 63 75 no bc no info in truths)
 pixscale = 9.92063492063492e-6      	# deg
 sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
@@ -406,7 +406,8 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 
-				paramlist.append( [diskname, R_obs, R_sim, Ri, p_idx, M_obs, M_sim, epsilon, LI0_d, LI0_env, F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
+				paramlist.append( [diskname, R_obs, R_sim, Ri, p_idx, M_obs, M_sim, epsilon, LI0_d, LI0_env, 
+					   F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
 
 	res_df = pd.DataFrame( paramlist, 
 				   columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs', 'M_sim', 'epsilon_M', 'LI0_d', 'LI0_env',
@@ -618,7 +619,7 @@ def visib_ratios_plot():
 	from scipy.interpolate import Akima1DInterpolator
 	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7, 'figure.dpi':200})
 	resdir_7mm = '/home/PERSONALE/gabriele.columba/run/results/7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = '/home/PERSONALE/gabriele.columba/run/results/3mm/old_2c/run_7200s_2c_xsrc/'
+	resdir_3mm = '/home/PERSONALE/gabriele.columba/run/results/3mm/run_3600s_2c_xsrc/'
 	resdir_1mm = '/home/PERSONALE/gabriele.columba/run/results/1mm/run_300s_2c_xsrc/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
@@ -646,13 +647,13 @@ def visib_ratios_plot():
 		re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re)( uvdist3 )
 		re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
 		rr31 = re1 / re3
-		rr71 = re1 / re7		# the ratios, with longer wle on top
+		rr71 = re1 / re7		# the ratios, with shorter wle on top
 		rr73 = re3 / re7
 
 		# fig, ax = plt.subplots()
-		axes[i].plot( uvdist3 *1e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='1mm/7mm', alpha=0.6 )
+		axes[i].plot( uvdist3 *1e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='0.9mm/7mm', alpha=0.6 )
 		axes[i].plot( uvdist3 *1e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
-		axes[i].plot( uvdist3 *1e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='1mm/3mm', alpha=0.85 )
+		axes[i].plot( uvdist3 *1e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
 		axes[i].set( xscale='log', yscale='log', ylim=[1e-3,10]) ; axes[i].set_title( diskname, fontsize=8)
 		#plt.show()
 		# uv.apply_phase( -dRA, -dDec)         # center the source on the phase center ???
