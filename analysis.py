@@ -147,19 +147,26 @@ def thick_sim_inspo( df, k_sim, Tavg, v_obs, run_name):
 	plt.show()
 	
 
-def plot_mass_compare( df, run_name, Tavg):
-	'''Compared retrieved mass from obs to simul mass of disks. '''
-	M_ratio = accuracy_ratio( df.M_obs, df.M_sim/100 )
+def plot_mass_compare( df, run_name, Tavg, simple_M):
+	'''
+	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
+	'''
+	M_obs = df.M_obs_simple if simple_M else df.M_obs
+	M_ratio = accuracy_ratio( M_obs, df.M_sim/100 )
+	T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
 	ptitle = 'Mass comparison' + run_name
-	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
-	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )		# y=x identity
-	ax.scatter( x=df.M_sim/100, y=df.M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
+	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
+	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
+	ax.scatter( x=df.M_sim/100, y=M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
 	ax.text( x=0.01, y=0.85, s= f'mean accuracy: {np.mean( M_ratio) :1.1f}x',
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
-	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]' , xscale='log', yscale='log', title=ptitle )
+	ax.text( x=0.01, y=0.90, s= f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)',
+		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=12, alpha=1.)
+	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xscale='log', yscale='log', title=ptitle )
+	ax.axis( 'square')
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	[ fig.savefig( ptitle + f'_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( ptitle + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 
@@ -273,8 +280,8 @@ def produce_truths_df():
 	for k in hf.attrs.keys():	#Extract the disk quantities
 		disks[k] = hf.attrs[k]
 
-	Rsim = []; Msim = []; Lint = []; Lacc = []; dTemp1 = []; dTemp2 = []; multip =[];
-	angs_x = []; angs_y = []; angs_z = []; hr = []; Mstar = []; age =[];
+	Rsim = []; Msim = []; Lint = []; Lacc = []; dTemp1 = []; dTemp2 = []; multip =[]; 
+	angs_x = []; angs_y = []; angs_z = []; hr = []; Mstar = []; age =[]; Menv = [] 
 	ids = disks['list_of_disks']
 
 	for i_d in ids:
@@ -284,7 +291,8 @@ def produce_truths_df():
 		angs_y.append( np.arccos( directions[1]) *180/np.pi)    
 		angs_z.append( np.arccos( directions[2]) *180/np.pi)    
 		Rsim.append( disks[prefix + '_radius'] )
-		Msim.append( disks[prefix + '_mass'] )			# disk mass
+		Msim.append( disks[prefix + '_mass'] )				# disk mass
+		Menv.append( disks[prefix + '_mass_env_1000'] )		# env mass
 		Lint.append( disks[prefix + '_star_lum'] )
 		Lacc.append( disks[prefix + '_star_acclum'] )
 		dTemp1.append( disks[prefix + '_Temp_mid'] )	# mid, mavg o simple ?
@@ -294,8 +302,8 @@ def produce_truths_df():
 		Mstar.append( disks[prefix + '_sink_mass'] )	# star mass
 		age.append( disks[prefix + '_sink_age'] )
 
-	dfT = pd.DataFrame( np.array([Msim, Rsim, Lint, Lacc, dTemp1, dTemp2, multip, hr, Mstar, age, angs_x, angs_y, angs_z]).T, 
-		columns=['M_disk', 'R_disk', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'multiplicity', 'hr', 'M_star', 'age', 'i_yz', 'i_xz', 'i_xy'], index=ids)
+	dfT = pd.DataFrame( np.array([Msim, Menv, Rsim, Lint, Lacc, dTemp1, dTemp2, multip, hr, Mstar, age, angs_x, angs_y, angs_z]).T, 
+		columns=['M_disk', 'M_env', 'R_disk', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'multiplicity', 'hr', 'M_star', 'age', 'i_yz', 'i_xz', 'i_xy'], index=ids)
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
@@ -355,9 +363,6 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 	k_obs = k_sim # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
 
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
-	if disklist == []:    
-		print('NO FILES FOUND, check again the folder path!')
-		sys.exit()
 	print( len(disklist), 'files found')
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[OKlist]	# load my simulation truths file
 	paramlist = []
@@ -384,21 +389,20 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 				R_obs = R_90     # as Tung 
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
 
-				if simple_M:
-					F_v = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
-					M_obs = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun]
-				else: 
-					M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
+				F_v_simple = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
+				M_obs_simple = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
+				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
 				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=10, config_name=config_name, results_dir=results_dir )
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)			# theoretical fully thick disk flux
 
 			except: 
 				print('No bestfit params found for ', diskname)
-				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = Ri = p_idx = LI0_d = LI0_env = np.nan
+				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = Ri = p_idx = LI0_d = LI0_env = F_v_simple = M_obs_simple = np.nan
 			
 			finally:
-				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations
+				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations (gas)
 				epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
+				Menv_sim = truths_df.loc[ disk_n ]['M_env']		# [Msun] env mass from simulations (gas) within 1000 au ??
 				R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
 				R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
 				Ri = (Ri * dist).to_value( u.au )				# rad to [au]
@@ -406,23 +410,23 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 
-				paramlist.append( [diskname, R_obs, R_sim, Ri, p_idx, M_obs, M_sim, epsilon, LI0_d, LI0_env, 
-					   F_v, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
+				paramlist.append( [diskname, R_obs, R_sim, Ri, p_idx, M_obs_simple, M_obs, M_sim, epsilon, Menv_sim, LI0_d, LI0_env, 
+					   F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
 
 	res_df = pd.DataFrame( paramlist, 
-				   columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs', 'M_sim', 'epsilon_M', 'LI0_d', 'LI0_env',
-				 'F_obs', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
+				   columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'M_sim', 'epsilon_M', 'Mes', 'LI0_d', 'LI0_env',
+				 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
 				   ).set_index('source')
 	
 	os.chdir( results_dir )
 	res_df.to_csv( f'analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
-	# res_df = pd.read_csv( f'analysis_results-3600s.txt', sep='\t', index_col='source')	# to load it
+	# res_df = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')	# to load it
 	
 	if figures:
 		# plot_opacity()
 		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name )
 		plot_inc_compare( res_df, run_name )
-		plot_mass_compare( res_df, run_name, T_avg )
+		plot_mass_compare( res_df, run_name, T_avg, simple_M=True ) ; plot_mass_compare( res_df, run_name, T_avg, simple_M=False )
 		theta = alma_resolution( wle=wle, config_name=config_name)
 		plot_radius_compare( res_df, theta, run_name )
 		thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
@@ -649,12 +653,15 @@ def visib_ratios_plot():
 		rr31 = re1 / re3
 		rr71 = re1 / re7		# the ratios, with shorter wle on top
 		rr73 = re3 / re7
+		a13 = np.log10( rr31) / np.log10( 3 / 0.89 )
+		a17 = np.log10( rr71) / np.log10( 7 / 0.89 )
+		a37 = np.log10( rr73) / np.log10( 7 / 3 )
 
 		# fig, ax = plt.subplots()
 		axes[i].plot( uvdist3 *1e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='0.9mm/7mm', alpha=0.6 )
 		axes[i].plot( uvdist3 *1e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
 		axes[i].plot( uvdist3 *1e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
-		axes[i].set( xscale='log', yscale='log', ylim=[1e-3,10]) ; axes[i].set_title( diskname, fontsize=8)
+		axes[i].set( xscale='log', yscale='log', ylim=[1e-1,1e3]) ; axes[i].set_title( diskname, fontsize=8)
 		#plt.show()
 		# uv.apply_phase( -dRA, -dDec)         # center the source on the phase center ???
 		# np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
@@ -663,7 +670,7 @@ def visib_ratios_plot():
 		ax.set_visible(False)
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
 	fig.supylabel('Re(V) [Jy]', weight='bold', x=0.08, fontsize=12 )
-	fig.supxlabel('uv-distance [k $\lambda$]', weight='bold', fontsize=12 )
+	fig.supxlabel('uv-distance [k$\lambda$]', weight='bold', fontsize=12 )
 	axes[0].legend()
 	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
@@ -699,14 +706,14 @@ if __name__=='__main__':
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 
 
-# Texp = 10800
-# model_comps = '2c'
-# xsrc_flag = 'mono'
-# wle = 0.003
-# folder_wle = f'{round(wle*1e3)}mm/'
-# savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
-# run_suffix = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
-# config_name = 'alma.cycle11.7' 
+Texp = 3600
+model_comps = '2c'
+xsrc_flag = 'mono'
+wle = 0.003
+folder_wle = f'{round(wle*1e3)}mm/'
+savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
+run_suffix = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
+config_name = 'alma.cycle11.6' 
 
 # # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
 
