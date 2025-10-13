@@ -197,7 +197,7 @@ def plot_radius_compare( df, res_limit, run_name):
 def plot_inc_compare( df, run_name):
 	'''Assuming inc in [deg]. '''
 	inc = df.i_sim.copy() 
-	inc[ inc>= 90] = inc - 90
+	# inc[ inc>= 90] = inc - 90
 	ptitle = 'Inclination comparison' + run_name
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
@@ -269,6 +269,28 @@ def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
 	# 	print( '\nNo extra sources found in the image!\n' )
 	# 	return 0, img_pixscale
 	return F_v		# [Jy] integrated flux observed
+
+
+def plot_correlations( df, run_name='', logfit=True):
+	y = df.epsilon_M  	# mass relative error
+	xlabs = ['M_obs', 'M_sim', 'LI0_d', 'LI0_env', 'Mes', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'i_obs', 'i_sim', 'L_tot']		# 
+	
+	plt.rcParams.update({ 'font.size':8, 'legend.fontsize':6, 'figure.dpi':200})
+	ptitle = 'Mass error correlations' + run_name
+	fig, axs = plt.subplots( 3, int( np.ceil(len(xlabs)/3)), sharey=True, squeeze=False, tight_layout=True )
+	axs = axs.flatten()
+	fig.suptitle( ptitle )
+
+	for i in range( len(xlabs)): 
+		axs[i].scatter( df[xlabs[i]], y, alpha=0.7 )
+		axs[i].set(  xlabel= xlabs[i])
+		xscale = 'log' if (logfit and (i not in [2,3,8,9,10])) else 'linear'	# not all log anyway
+		axs[i].set( xscale=xscale, yscale='linear')
+	fig.supylabel( r'$\delta_M$', fontsize=12 )
+	# fig.subplots_adjust( wspace=0.001)
+	# llab = '_log' if logfit else ''
+	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	plt.show()
 
 
 def produce_truths_df():
@@ -407,6 +429,7 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 				R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
 				Ri = (Ri * dist).to_value( u.au )				# rad to [au]
 				i_sim = truths_df.loc[ disk_n ][ 'i' + diskname.strip( str(disk_n) ) ]
+				i_sim = i_sim - 90 if  i_sim >= 90 else i_sim 	# all between 0 and 90 deg
 				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 
@@ -701,9 +724,10 @@ if __name__=='__main__':
 	#	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
 	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
-	main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, simple_M=args["simple_M"], figures=True )
+	Rdf = main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, simple_M=args["simple_M"], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
+	plot_correlations( Rdf, run_name=run_suffix )
 
 
 Texp = 3600
