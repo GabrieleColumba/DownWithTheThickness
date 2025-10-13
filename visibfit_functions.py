@@ -860,20 +860,20 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'R_out/Ri', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
 	labs_mc = labels_2c if two_comp else labels_gauss
 
-	# if sampler is None:
-	# 	sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
-	# nsteps = sampler.get_chain().shape[0]
-	# if burnin is None:
-	# 	burnin = nsteps//3
-	# bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
-	# np.savetxt( f'bestfit_params.txt', bestfit )
+	if sampler is None:
+		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
+	nsteps = sampler.get_chain().shape[0]
+	if burnin is None:
+		burnin = nsteps//3
+	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
+	np.savetxt( f'bestfit_params.txt', bestfit )
 	bestfit = np.loadtxt('bestfit_params.txt')
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
 	if extra_sources is None:
 		extra_sources = copy_extra_sources( diskname, nRMS, config_name ) if monosource==False else (0,0)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle, config_name=config_name)
-	# residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
+	residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
