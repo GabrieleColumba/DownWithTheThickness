@@ -115,7 +115,7 @@ def galario_model( pars, galargs, two_comp=True, extra_sources=[0,0]):
 		vis_extra = gd.sampleImage( extra_sources[0], extra_sources[1], u, v, PA=0, dRA=0, dDec=0, origin='lower', check=False)	# different pixscale than target model!
 		vis_tot = vis_target + vis_extra
 	else:
-		vis_extra = [0]
+		vis_extra = 0
 		vis_tot = vis_target
 	
 	# Compute chi2 in visibility space (should be equivalent to galario reduce_chi2())
@@ -124,17 +124,24 @@ def galario_model( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	return (disk_model, env_model), chi2, (vis_target, vis_extra)
 
 
-def copy_extra_sources( diskname, nRMS=1.5, config_name='' ):
+def copy_extra_sources( diskname, nRMS, config_name='', deconvmod=True ):
 	'''
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image.flat' )		# noisy image 
-	noisy_img = table.getcol('map').squeeze().copy( order='F').T 			# copy simanalyze noisy image (convolved)  [Jy/beam]
-	beam_dict = table.getkeyword('imageinfo')['restoringbeam']	# a, b and PA of beam
+	table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )			# noisy image 
+	noisy_img = table.getcol('map').squeeze().copy( order='F').T 		# copy simanalyze noisy image (convolved)  [Jy/beam]
+	beam_dict = table.getkeyword('imageinfo')['restoringbeam']			# a, b and PA of beam
+	beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
 	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
-	table.open( f'{diskname}.{config_name}.noisy.model' )		
-	deconvolved = table.getcol('map').squeeze().copy( order='F').T		# deconvolved model image of the sky [Jy/pix]
+	beam_to_pix = ( 3600* np.rad2deg( img_pixscale ) )**2  / beam_area				# to convert the flux from [Jy/beam] to [Jy/pix]
+	xsrc_img = noisy_img
+	factor = beam_to_pix
+	if deconvmod:
+		table.open( f'{diskname}.{config_name}.noisy.model' )		
+		deconvolved = table.getcol('map').squeeze().copy( order='F').T			# deconvolved model image of the sky [Jy/pix]
+		xsrc_img = deconvolved
+		factor = 1		# deconv is already in [Jy/pix]
 	table.close()
 
 	## apply threshold to identify the sources on the convolved image
@@ -142,7 +149,7 @@ def copy_extra_sources( diskname, nRMS=1.5, config_name='' ):
 	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
-	nimg_masked = np.where( noisy_img > thresh, deconvolved, 0)		# deconvolved.copy() # keep everything above n*RMS or take the full deconvolution
+	nimg_masked = np.where( noisy_img > thresh, xsrc_img, 0)		# keep everything above n*RMS 
 	
 	sources_df = pd.DataFrame( regionprops_table( label_image,
 		properties=('centroid', 'orientation', 'axis_major_length', 'axis_minor_length', 'equivalent_diameter_area'), ) ).rename(
@@ -155,21 +162,22 @@ def copy_extra_sources( diskname, nRMS=1.5, config_name='' ):
 	nimg_masked[ miny:maxy , minx:maxx] = 0			# zeros on the entire target rectangle (envelopes should be safe then)
 
 	if (nimg_masked > 0).any():	
-		fig, ax = plt.subplots( figsize=(7, 7))		# diagnostic figure
-		# diag_img = np.where( noisy_img > thresh, noisy_img, np.nan)
-		# diag_img[ miny:maxy , minx:maxx] = np.nan
-		beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
-		smooth_r = ( beam_area / np.pi )**0.5 / np.rad2deg( img_pixscale )/3600		# smoothing radius in [pix]
-		diag_img = snd.gaussian_filter( nimg_masked, sigma=smooth_r )
+		fig, ax = plt.subplots( figsize=(5, 5))		# diagnostic figure
+		if deconvmod: 
+			smooth_r = ( beam_area / np.pi )**0.5 / np.rad2deg( img_pixscale )/3600		# smoothing radius in [pix]
+			diag_img = snd.gaussian_filter( nimg_masked, sigma=smooth_r )
+		else:
+			diag_img = np.where( noisy_img > thresh, xsrc_img, np.nan)
+			diag_img[ miny:maxy , minx:maxx] = np.nan
 		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )	# use noisy_img just for diagnostic plot
 		ax.set_axis_off()
-		fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=200)
+		fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=300)
 		plt.close()
 	else: 
 		print( '\nNo extra sources found in the image!\n' )
 		return (0, img_pixscale)
-
-	return nimg_masked, img_pixscale		# [Jy/pix], [rad/pix]
+	# nimg_masked[ nimg_masked <= 1e-50 ] = 1e-50			# remove negative values
+	return nimg_masked * factor, img_pixscale		# [Jy/pix], [rad/pix]
 
 
 def calc_beam_factor( xsrc, gal_mod, dxy):
@@ -558,7 +566,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	plt.close()
 
 
-def generate_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3, config_name=''):
+def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3, config_name=''):
 	'''
 	Call CASA simobserve and simanalyze to produce mock observations of filename.
 	'''
@@ -705,9 +713,8 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	off = pixscale		# [rad]  basically 1 pixel of noisy img 0.035714 at 3mm and 1/5 at 1mm
 	vis_shifted = gd.apply_phase_vis( dRA= -off, dDec= -off, u=galargs[5], v=galargs[6], vis=vis_target)	# alignment fix, offset = 1 pix
 	modeldata[:] = vis_shifted + vis_xsrc				# copy model visibilities broadcasted to correct shape
-	casa_table.putcol( 'CORRECTED_DATA', modeldata )		# add the fitted model to the MS, here just to be imaged
+	casa_table.putcol( 'CORRECTED_DATA', modeldata )	# add the fitted model to the MS, here just to be imaged
 	casa_table.flush()
-
 	casa_table.close()
 
 	ctk.tclean(		# image the best model !
@@ -719,8 +726,8 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 		# phasecenter=ptgfile,
 		weighting='briggs',
 		niter=10000, 	            # CLEANing, is this OK ?
-		nsigma=1,
-		threshold= f'{ analytic_sensitivity(t=T_exp) :.4f}mJy',
+		nsigma=3,
+		threshold= f'{ 3* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 	
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
@@ -784,7 +791,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, ext
 
 		if b==0:	# do this only for the best one of all
 			rot_target = snd.rotate( diskmod + envmod, angle=-PA/deg, reshape=False )   	# correct for PA rotation  
-			r_s_target = snd.shift( rot_target, shift=( dDec/dxy, -dRA/dxy ) )  		# shift the model to match the mock obs 
+			r_s_target = snd.shift( rot_target, shift=( dDec/dxy, -dRA/dxy ) )  			# shift the model to match the mock obs 
 			if np.any( extra_sources[0] ):
 				npix, pixscale = extra_sources[0].shape[0], extra_sources[1]
 			else:		# these two should coincide anyway
@@ -902,7 +909,7 @@ def get_galargs( wle):
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=True, nRMS=1.5, wle=mm3, config_name=''):
+def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=False, nRMS=1.5, wle=mm3, config_name=''):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''

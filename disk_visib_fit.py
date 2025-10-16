@@ -6,7 +6,7 @@ from local_variables import *		# file with the local path pointers and cpu setti
 from visibfit_functions import *
 import argparse
 
-# Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples)	
+# Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples ?)	
 NOfit = [29, 63, 75]
 
 if __name__=='__main__':
@@ -19,6 +19,7 @@ if __name__=='__main__':
 	parser.add_argument('-nsteps', type=int, default=5000, help='MCMC steps (default: 5000)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-replot_only', action='store_true', help='replot all the bestfit plots for the fitting part (default: False)')
+	parser.add_argument('-nRMS', type=float, default=1.3, help='nRMS to threshold the xsrc detection (default: 1.5)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')		# deprecated now
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )
@@ -41,16 +42,16 @@ if __name__=='__main__':
 		for fname in disklist:
 			if args["replot_only"]:		# check the disk already regressed and produce again plots
 				diskname = fname.replace( savedir, '' )
-				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
+				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
 			else:						# perform the regression from scratch
 				diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 				if int( diskname.strip( 'disk_xyz') ) in NOfit:
 					print('Skipping NO-FIT target: ', fname , '\n')
 				else:
 					print( '\nRunning for: \t', diskname )
-					generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'],
+					perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
 						data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name)	
-					mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], 
+					mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], nRMS=args['nRMS'], 
 				  		monosource=args['monosrc'],	Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_name)
 
 
@@ -62,8 +63,9 @@ if __name__=='__main__':
 			fname = data_path + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
 		
 		if args["replot_only"]:	
-			diskname = fname.replace( savedir, '' )
-			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
+			diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
+			#diskname = fname.replace( savedir, '' )
+			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
 			sys.exit()		# replot and terminate before regressions
 
 		diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
@@ -71,7 +73,7 @@ if __name__=='__main__':
 			print('Skipping NO-FIT target: ', fname , '\n')
 		else:
 			print( '\nRunning for: \t', diskname )
-			generate_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=1.5,
+			perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
 					data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name )
 			mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-					Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=1.5, wle=wle, config_name=config_name)
+					Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=args['nRMS'], wle=wle, config_name=config_name)

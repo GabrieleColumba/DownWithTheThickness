@@ -1,3 +1,6 @@
 local_variables.py
 __pycache__
 *.log
+.DS_*
+*.png
+*.pdf
