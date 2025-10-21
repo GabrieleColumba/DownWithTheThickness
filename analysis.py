@@ -21,21 +21,31 @@ from local_variables import *
 plt.rcParams.update({ 'font.size':11, 'legend.fontsize':9, 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
-OKlist = np.array([17, 20, 30, 42, 43, 50, 52, 53, 57, 65, 67, 72, 78, 79, 82, 83]) 	# disk numbers with sim info available (70, 29 no bc binary, 63 75 no bc no info in truths)
-pixscale = 9.92063492063492e-6      	# deg
-sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
+OKlist = np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83]) 	# (70, 78, 29, 52 no bc binary, 43 no one knows, 63 75 no bc no info in truths)
+# pixscale = 9.92063492063492e-6      	# deg
+# sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
 au_to_rad = 1 / dist.to_value(u.au)
 au_to_as = 1 / dist.to_value(u.au) * 180 / np.pi * 3600		# from au to arcsec
 
 
-def gauss_flux_tot( I0, sigma, Rmax):
+def gauss_flux_integral( I0, sigma, Rmax):
 	'''
 	Compute the total flux from a gaussian disk with peak brightness I0 integrating radially up to Rmax. 
 	inputs  I0: [Jy/sr]       sigma, Rmax: [rad]
 	returns F_v: [Jy]
 	'''
 	return 2*np.pi* I0 * sigma**2 * (1 - np.exp( -0.5 * (Rmax/sigma)**2 ) )
+
+
+def plummer_integral( I0, Ri, p_idx, Rmax):
+	'''
+	Compute the total flux from a Plummer envelope with peak brightness I0 integrating radially up to Rmax. 
+	inputs  I0: [Jy/sr]       Ri, Rmax: [rad]    p_idx: [adim] (p + q exponent)
+	returns F_v: [Jy]
+	'''
+	p = ( p_idx - 1 ) / 2
+	return np.pi* I0 * Ri**2 / (1-p) * (  ( 1 + (Rmax/Ri)**2 )**(1-p) -1 )
 
 
 def accuracy_ratio( obs_val, sim_val ):
@@ -128,7 +138,8 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
 	[ fig.savefig( ptitle + f'_k{k_sim :.3f}_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	plt.show()
+	# plt.show()
+	plt.close()
 	
 
 def thick_sim_inspo( df, k_sim, Tavg, v_obs, run_name):
@@ -144,8 +155,40 @@ def thick_sim_inspo( df, k_sim, Tavg, v_obs, run_name):
 	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
 	ax.legend( loc='lower right')
 	[ fig.savefig( ptitle + f'_k{k_sim :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	plt.show()
+	# plt.show()
+	plt.close()
 	
+
+def plot_mass_env( df, run_name, ):
+	'''
+	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
+	'''
+	M_obs = df.Meo
+	M_ratio = accuracy_ratio( M_obs, df.Mes/100 )
+	# T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
+
+	ptitle = 'Envelope mass comparison' + run_name
+	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
+	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
+	ax.scatter( x=df.Mes/100, y=M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
+	ax.text( x=0.01, y=0.85, s= f'mean accuracy: {np.mean( M_ratio) :1.1f}x',
+		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
+	# ax.text( x=0.01, y=0.90, s= f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)',
+	# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=12, alpha=1.)
+	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{env, obs} $ [M$_{\odot}$]', xscale='log', yscale='log', title=ptitle )
+	ax.axis( 'square')
+	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
+	# [ fig.savefig( ptitle + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	plt.show()
+	# plt.close()
+
+	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
+	ax.scatter( x=df.Mes/100, y=df.Fv_env, marker='*', c='r', alpha=0.7)
+	# ax.scatter( x=df.Mes/100, y=df.LI0_env/df.LI0_env.max(), marker='*', alpha=0.7)
+	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'Fv_env [Jy] ', xscale='log', yscale='log' )
+	plt.show()
+
+
 
 def plot_mass_compare( df, run_name, Tavg, simple_M):
 	'''
@@ -155,7 +198,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M):
 	M_ratio = accuracy_ratio( M_obs, df.M_sim/100 )
 	T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
-	ptitle = 'Mass comparison' + run_name
+	ptitle = 'Disk mass comparison' + run_name
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
 	ax.scatter( x=df.M_sim/100, y=M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
@@ -167,7 +210,8 @@ def plot_mass_compare( df, run_name, Tavg, simple_M):
 	ax.axis( 'square')
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	[ fig.savefig( ptitle + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	plt.show()
+	# plt.show()
+	plt.close()
 
 
 def plot_radius_compare( df, res_limit, run_name):
@@ -191,7 +235,8 @@ def plot_radius_compare( df, res_limit, run_name):
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend()
 	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	plt.show()
+	# plt.show()
+	plt.close()
 
 
 def plot_inc_compare( df, run_name):
@@ -205,7 +250,8 @@ def plot_inc_compare( df, run_name):
 	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	[fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	plt.show()
+	# plt.show()
+	plt.close()
 
 
 def rms( arr ):
@@ -230,7 +276,7 @@ def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
 	'''
 	os.chdir( results_dir + diskname )
 	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image' )		# noisy image 
+	table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )		# noisy image, with pbcor the central target is slightly under corrected?
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 			# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']	# a, b and PA of beam
 	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
@@ -256,18 +302,6 @@ def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
 	beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
 	beam_to_pix = ( 3600* np.rad2deg( img_pixscale ) )**2  / beam_area		# to convert the flux from [Jy/beam] to [Jy/pix]
 	F_v = np.sum( target_img * beam_to_pix )		# integrated flux
-
-	# if (nimg_masked > 0).any():	
-	# 	fig, ax = plt.subplots( figsize=(8, 8))		# diagnostic figure
-	# 	diag_img = np.where( noisy_img > thresh, noisy_img, np.nan)
-	# 	diag_img[ miny:maxy , minx:maxx] = np.nan
-	# 	ax.imshow( target_img, origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
-	# 	ax.set_axis_off()
-	# 	# fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=600)
-	# 	plt.close()
-	# else: 
-	# 	print( '\nNo extra sources found in the image!\n' )
-	# 	return 0, img_pixscale
 	return F_v		# [Jy] integrated flux observed
 
 
@@ -275,7 +309,7 @@ def plot_correlations( df, run_name='', logfit=True):
 	y = df.epsilon_M  	# mass relative error
 	xlabs = ['M_obs', 'M_sim', 'LI0_d', 'LI0_env', 'Mes', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'i_obs', 'i_sim', 'L_tot']		# 
 	
-	plt.rcParams.update({ 'font.size':8, 'legend.fontsize':6, 'figure.dpi':200})
+	plt.rcParams.update({ 'font.size':8, 'legend.fontsize':6, 'figure.dpi':300})
 	ptitle = 'Mass error correlations' + run_name
 	fig, axs = plt.subplots( 3, int( np.ceil(len(xlabs)/3)), sharey=True, squeeze=False, tight_layout=True )
 	axs = axs.flatten()
@@ -290,6 +324,16 @@ def plot_correlations( df, run_name='', logfit=True):
 	# fig.subplots_adjust( wspace=0.001)
 	# llab = '_log' if logfit else ''
 	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	plt.show()
+
+	y = df.epsilon_M  	# mass relative error
+	ptitle = 'Mass error correlations_alt'
+	fig, ax = plt.subplots( tight_layout=True )
+	fig.suptitle( ptitle )
+	ax.scatter(  df.Mes / df.M_sim , y, alpha=0.7 )
+	ax.set(  xlabel= 'Mdisk / Menv', xscale='linear')
+	fig.supylabel( r'$\delta_M$', fontsize=12 )
+	# [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 
@@ -365,17 +409,26 @@ def OLD_produce_truths_df():
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
+def env_mass_annuli( v_obs, LI0, Ri, p_idx, Rmax, kappa, Ltot):
+	'''Compute envelope mass in thin approximation but summing on annuli up to Rmax, with Tung Temp profile and fitted I0_env.'''
+	r_grid = np.logspace( -10, np.log10(Rmax), 400)		# [rad]
+	dF_grid = np.diff( plummer_integral( 10**LI0, Ri, p_idx, r_grid ) )		# annulus-integrated flux density [Jy]
+	rmid = ( r_grid[:-1] + r_grid[1:] ) / 2 * dist.to_value(u.au)	# midpoint radii [au]
+	dM = ( dist.cgs.value )**2 / kappa * dF_grid  / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=rmid ) )
+	Mtot = dM.sum() / const.M_sun.cgs.value * 1e-23		# [Msun]
+	return Mtot, dF_grid.sum() 
+
 def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
 	'''Compute disk mass in thin approximation but summing on annuli over the Robs, with Tung Temp profile and fitted I0_disk.'''
 	r_grid = np.logspace(-10, np.log10(R_obs), 100)		# [rad]
-	dF_grid = np.diff( gauss_flux_tot( 10**LI0_d, sma, r_grid ) )	# annulus-integrated flux density [Jy]
+	dF_grid = np.diff( gauss_flux_integral( 10**LI0_d, sma, r_grid ) )	# annulus-integrated flux density [Jy]
 	rmid = ( r_grid[:-1] + r_grid[1:] ) / 2 * dist.to_value(u.au)	# midpoint radii [au]
 	dM = ( dist.cgs.value )**2 / kappa * dF_grid  / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=rmid ) )
 	Mtot = dM.sum() / const.M_sun.cgs.value * 1e-23		# [Msun]
 	return Mtot, dF_grid.sum() 
 
 
-def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=False, figures=True):
+def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, figures=True):
 	'''
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
@@ -404,6 +457,7 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma	[arcsec --> rad]
 				i_obs = pars[-4]							# disk inclination [deg]
 				p_idx = pars[5]	
+				Rout = pars[4] * Ri
 
 				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
 				R_90 = R_68 * 1.42                              # 90% radius
@@ -411,15 +465,17 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 				R_obs = R_90     # as Tung 
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
 
-				F_v_simple = gauss_flux_tot( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
-				M_obs_simple = F_v *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
+				F_v_simple = gauss_flux_integral( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
+				M_obs_simple = F_v_simple *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
 				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
-				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=10, config_name=config_name, results_dir=results_dir )
+				Fv_count = count_flux_sources( 'disk'+diskname, nRMS=7, config_name=config_name, results_dir=results_dir ) 
 				F_v_thicc = thick_flux( v_obs, dist, R_obs, l_star=l_star)			# theoretical fully thick disk flux
+
+				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, Rout, k_obs, l_star)
 
 			except: 
 				print('No bestfit params found for ', diskname)
-				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = Ri = p_idx = LI0_d = LI0_env = F_v_simple = M_obs_simple = np.nan
+				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = Ri = p_idx = LI0_d = LI0_env = F_v_simple = M_obs_simple = M_env_o = Fv_env  = np.nan
 			
 			finally:
 				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations (gas)
@@ -434,11 +490,11 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=122) / dist.cgs.value**2  *1e23	
 
 				paramlist.append( [diskname, R_obs, R_sim, Ri, p_idx, M_obs_simple, M_obs, M_sim, epsilon, Menv_sim, LI0_d, LI0_env, 
-					   F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin] )
+					   F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin, M_env_o, Fv_env] )
 
 	res_df = pd.DataFrame( paramlist, 
 				   columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'M_sim', 'epsilon_M', 'Mes', 'LI0_d', 'LI0_env',
-				 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin']
+				 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin', 'Meo', 'Fv_env']
 				   ).set_index('source')
 	
 	os.chdir( results_dir )
@@ -448,13 +504,13 @@ def main_analysis( wle, results_dir, config_name, run_name, T_avg=122, simple_M=
 	if figures:
 		# plot_opacity()
 		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name )
-		plot_inc_compare( res_df, run_name )
+		# plot_inc_compare( res_df, run_name )
 		plot_mass_compare( res_df, run_name, T_avg, simple_M=True ) ; plot_mass_compare( res_df, run_name, T_avg, simple_M=False )
+		plot_mass_env( res_df, run_name )
 		theta = alma_resolution( wle=wle, config_name=config_name)
 		plot_radius_compare( res_df, theta, run_name )
-		thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
+		# thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
 		plt.close() 
-		# truths_total = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	return res_df
 
 
@@ -503,7 +559,8 @@ def plot_SNR( df, run_name ):
 	ax.axhline( y=100, color='gray', ls='-')
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	[fig.savefig( 'SNR_plot' + run_name + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	plt.show()
+	# plt.show()
+	plt.close()
 
 
 
@@ -539,8 +596,9 @@ def assess_SNR( Texp, wle, results_dir, config_name, run_name ):
 		table.close()
 
 	df = pd.DataFrame( SNRs, columns=['source', 'SNR', 'max peak', 'beam peak', 'noise']).set_index('source')
-	os.chdir( results_dir )
-	df.to_csv( f'Peak-beam_SNR_{Texp}s.txt', sep='\t') #, float_format='%.2e')
+	# os.chdir( results_dir )
+	df.to_csv( f'Peak-beam_SNR_{run_name}.txt', sep='\t') #, float_format='%.2e')
+	print( '\nMedian SNR of run: \t', np.nanmedian( df.SNR) )
 	plot_SNR( df, run_name)
 
 
@@ -709,7 +767,7 @@ if __name__=='__main__':
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	parser.add_argument('-Tavg', type=int, default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
-	parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
+	# parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
 	args = vars( parser.parse_args() )
 
 	model_comps = '2c' if args['2c'] else 'g+'
@@ -724,22 +782,60 @@ if __name__=='__main__':
 	#	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
 	# assess_SNR( Texp=args['Texp'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
-	Rdf = main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, simple_M=args["simple_M"], figures=True )
+	Rdf = main_analysis( T_avg=args['Tavg'], wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
-	plot_correlations( Rdf, run_name=run_suffix )
+	# plot_correlations( Rdf, run_name=run_suffix )
 
 
-Texp = 3600
-model_comps = '2c'
-xsrc_flag = 'mono'
-wle = 0.003
-folder_wle = f'{round(wle*1e3)}mm/'
-savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
-run_suffix = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
-config_name = 'alma.cycle11.6' 
+# Texp = 7200
+# model_comps = '2c'
+# xsrc_flag = 'xsrc'
+# wle = 0.003
+# folder_wle = f'{round(wle*1e3)}mm/'
+# # savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
+# run_name = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
+# config_name = 'alma.cycle11.7' 
 
-# # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
+# # # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
+# Rdf = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')
+# # plot_correlations( Rdf, run_name )
 
 
+# # logR = np.log10( Rdf.R_obs / Rdf.R_sim )
 
+# # plt.hist( logR, bins=10)
+# # plt.axvline( 0.12, c='r')
+# # plt.show()
+
+# # np.nanmean( logR)
+# histvar =  Rdf.R_obs / Rdf.R_sim
+# median = np.nanmedian( histvar )
+
+
+# plt.rcParams.update({ 'font.size':10, 'legend.fontsize':7, 'figure.dpi':300})
+# ptitle = 'Radius histogram' + run_name
+# fig, ax = plt.subplots( figsize =(3,3), tight_layout=True )
+# # fig.suptitle( ptitle )
+# ax.hist( x=histvar, bins=15, color='tab:green' )
+
+# ax.axvline( x=1, ls=':', c='k' )
+# ax.axvline( x=np.nanmedian( histvar ), ls='-', c='red' )			# y=x identity
+# # ax.axvline( x=np.nanstd( histvar ), ls='-', c='red' )	
+
+# ax.text( x=0.01, y=0.85, s= f'std: {np.nanstd( histvar) :1.1f}',
+# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
+# ax.set( xlabel= r'$ R_\mathrm{obs} / R_\mathrm{sim} $ ', ylabel=r'counts', title=ptitle )
+# # ax.axis( 'square')
+# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+# plt.show()
+
+# y = df.epsilon_M  	# mass relative error
+# ptitle = 'Mass error correlations_alt'
+# fig, ax = plt.subplots( tight_layout=True )
+# fig.suptitle( ptitle )
+# ax.scatter(  df.Mes / df.M_sim , y, alpha=0.7 )
+# ax.set(  xlabel= 'Mdisk / Menv', xscale='linear')
+# fig.supylabel( r'$\delta_M$', fontsize=12 )
+# [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+# plt.show()
