@@ -108,10 +108,10 @@ def galario_model( pars, galargs, two_comp=True, extra_sources=[0,0]):
 		disk_model, env_model = gd.sweep( I_disk + I0e, Rmin, dR, nxy, dxy, inc=inc), 0		# I0e here is an additional constant for background
 		target_model = disk_model
 	# Compute visibilities for the central target that requires rotation and offsets (with PA, inc, dRA, dDec)
-	vis_target = gd.sampleImage( target_model, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')		# , origin='lower' wtf ?
+	vis_target = gd.sampleImage( target_model, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower') 
 
-	if np.any( extra_sources[0] ):			# Compute visibilities for the extra sources (no rotation/offset)
-		vis_extra = gd.sampleImage( extra_sources[0], extra_sources[1], u, v, PA=0, dRA=0, dDec=0, origin='lower', check=False)	# different pixscale than target model!
+	if np.any( extra_sources[0] ):			# Compute visibilities for the extra sources (offset required for matching coordinates centres with CASA!)
+		vis_extra = gd.sampleImage( extra_sources[0], extra_sources[1], u, v, PA=0, dRA=+extra_sources[1], dDec=+extra_sources[1], origin='lower', check=False)	# different pixscale than target model!
 		vis_tot = vis_target + vis_extra
 	else:
 		vis_extra = 0
@@ -164,7 +164,7 @@ def copy_extra_sources( diskname, nRMS, config_name='', deconvmod=True ):
 		if deconvmod: 
 			smooth_r = ( beam_area / np.pi )**0.5 / np.rad2deg( img_pixscale )/3600		# smoothing radius in [pix]
 			diag_img = snd.gaussian_filter( nimg_masked, sigma=smooth_r )
-			diag_img = np.where( noisy_img > thresh, diag_img, np.nan)
+			diag_img[ noisy_img < thresh ] = np.nan	; diag_img[ miny:maxy , minx:maxx] = np.nan		# just for visualisation
 		else:
 			diag_img = np.where( noisy_img > thresh, xsrc_img, np.nan)
 			diag_img[ miny:maxy , minx:maxx] = np.nan
@@ -559,7 +559,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	fits.writeto( 'skycut.fits', skycut, header=hdr, overwrite=True)
 	
 	plt.imshow(  np.clip( skycut[:, ::-1 ], a_min=1e-8, a_max=None), 		# 1e-8 Jy/pix should be a fair rms low bound
-			origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')
+			origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')
 	plt.axis( False )
 	plt.savefig( 'sky_model' + fig_ext, bbox_inches='tight', dpi=200)
 	plt.close()
@@ -715,11 +715,11 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	casa_table.close()
 	vis_target, vis_xsrc = model_vis					# shift ONLY the target visibilities !
 	off = pixscale		# [rad]  basically 1 pixel of noisy img
-	vis_shifted = gd.apply_phase_vis( dRA= -off, dDec= -off, u=galargs[5], v=galargs[6], vis=vis_target)	# alignment fix, offset = 1 pix
+	vis_shifted = gd.apply_phase_vis( dRA= -off, dDec= -off, u=galargs[5], v=galargs[6], vis=vis_target + vis_xsrc)	# alignment fix, offset = 1 pix
 	casa_table.open( 'NoisyMS_copy', nomodify=False )	# leave the original MS untouched
 	corr_data = casa_table.getcol('CORRECTED_DATA')		# copy original data
 	modeldata = corr_data[:].copy()						# inherit the shape structure
-	modeldata[:] = vis_shifted + vis_xsrc				# copy model visibilities broadcasted to correct shape
+	modeldata[:] = vis_shifted #+ vis_xsrc				# copy model visibilities broadcasted to correct shape
 	casa_table.putcol( 'CORRECTED_DATA', modeldata )	# add the fitted model to the MS, here just to be imaged
 	casa_table.flush()
 	casa_table.close()
@@ -732,9 +732,9 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 		cell = f'{pixscale}rad',
 		# phasecenter=ptgfile,
 		weighting='briggs',
-		niter=7000, 	 
-		nsigma=3,
-		threshold= f'{ 3* analytic_sensitivity(t=T_exp) :.4f}mJy',
+		niter=10000, 	 
+		nsigma=1,
+		threshold= f'{ 2* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 	
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
@@ -742,7 +742,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	casa_table.close()
 	ptitle = 'Bestfit model' 
 	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( best_img.T , origin='lower', cmap='gnuplot2', norm=mpl.colors.LogNorm( vmin=min_bkg_rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model
+	ci = ax.imshow( best_img.T , origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=min_bkg_rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
 	ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
@@ -750,8 +750,8 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
-	res_hand = (noisy_img - best_img ) / rms( noisy_img)		# " A MANO "
-	ptitle = 'Bestfit residuals'
+	res_hand = (noisy_img - best_img ) / min_bkg_rms( noisy_img)		# " A MANO "
+	ptitle = 'Bestfit residuals (hand)'
 	fig, ax = plt.subplots( figsize=(6,6))  
 	ci = ax.imshow( res_hand.T , origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model 
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
@@ -761,11 +761,10 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
-	np.save( 'best_residuals', arr=res_hand.T )	# save to file
 	# all'ordine zero, fare una immagine dei dati uv residui: original_uv_data - uv_data_modello_galario
 	# e confronterei questa residual image con l'immagine dei residui del clean
-	modeldata_shifted = gd.apply_phase_vis( dRA=+off, dDec=+off, u=galargs[5], v=galargs[6], vis=vis_shifted + vis_xsrc )	# requires back-shift of ALL ?!
-	res_visib = corr_data - modeldata_shifted
+	# xsrc_shifted = gd.apply_phase_vis( dRA= +off, dDec= +off, u=galargs[5], v=galargs[6], vis=vis_xsrc) 
+	res_visib = corr_data - ( vis_target + vis_xsrc )
 	casa_table.open( 'NoisyMS_copy', nomodify=False )	# leave the original MS untouched
 	casa_table.putcol( 'CORRECTED_DATA', res_visib )	# add the fitted model to the MS, here just to be imaged
 	casa_table.flush() ;	casa_table.close()
@@ -777,24 +776,26 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 		imsize=noisy_img.shape,			# to then compare directly with noisy image
 		cell = f'{pixscale}rad',
 		weighting='briggs',
-		# phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
-		niter=5000, 	            # CLEANing, is this OK ?
-		nsigma=3,
-		threshold= f'{ 3* analytic_sensitivity(t=T_exp) :.4f}mJy',
+		phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
+		niter=10000, 	            # CLEANing, is this OK ?
+		nsigma=1,
+		threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 
-	casa_table.open( './bestmod/residuals.image' )		# the one created above, in [Jy/beam]
-	best_res = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
+	casa_table.open( './bestmod/residuals.image' )			# the one created above, in [Jy/beam]
+	best_res = casa_table.getcol('map').squeeze().copy( order='F') / min_bkg_rms( noisy_img) 		# cleaned residuals img				
 	casa_table.close()
-	ptitle = 'Bestfit residuals (visib)' 
+	ptitle = 'Bestfit residuals' 
 	fig, ax = plt.subplots( figsize=(6,6))  
-	ci = ax.imshow( best_res.T / rms( noisy_img), origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model 
+	ci = ax.imshow( best_res.T, origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) )    # transpose to have as sky model 
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
 	ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, label='RMS units')
 	# # plt.show()
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
+
+	np.save( 'best_residuals', arr=best_res )	# save to file
 	return
 
 
@@ -924,7 +925,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
-	plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='gnuplot2')	# slicing to have it mirrored as casa
+	plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')	# slicing to have it mirrored as casa
 	plt.title('galario best model')
 	plt.axis(False)
 	#plt.show()
