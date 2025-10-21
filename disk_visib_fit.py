@@ -19,7 +19,7 @@ if __name__=='__main__':
 	parser.add_argument('-nsteps', type=int, default=5000, help='MCMC steps (default: 5000)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-replot_only', action='store_true', help='replot all the bestfit plots for the fitting part (default: False)')
-	parser.add_argument('-nRMS', type=float, default=2, help='nRMS to threshold the xsrc detection (default: 1.5)')
+	parser.add_argument('-nRMS', type=float, default=3, help='nRMS to threshold the xsrc detection (default: 1.5)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')		# deprecated now
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )
