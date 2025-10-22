@@ -770,7 +770,7 @@ if __name__=='__main__':
 	# parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
 	args = vars( parser.parse_args() )
 
-	model_comps = '2c' if args['2c'] else 'g+'
+	model_comps = '2c' if args['2c'] else '1c'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
 	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
