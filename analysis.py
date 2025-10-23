@@ -21,7 +21,7 @@ from local_variables import *
 plt.rcParams.update({ 'font.size':11, 'legend.fontsize':9, 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24
-OKlist = np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83]) 	# (70, 78, 29, 52 no bc binary, 43 no one knows, 63 75 no bc no info in truths)
+OKlist = 	np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83, 43]) 	# (70, 78, 29, 52 no bc binary, 43 no one knows, 63 75 no bc no info in truths)
 # pixscale = 9.92063492063492e-6      	# deg
 # sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
@@ -116,6 +116,33 @@ def plot_opacity():
 	plt.show()
 
 
+def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
+	'''
+	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
+	'''
+	ratio = var1 / var2		# generally obs/sim
+	mean_r = np.nanmean( ratio)
+	# median = np.nanmedian( histvar )
+	base_rgb = np.array(mpl.colors.to_rgb(histcolor))
+	darken_factor = 0.8			# compute a slightly darker edge color automatically
+	edge_rgb = tuple(np.clip(base_rgb * darken_factor, 0, 1))
+	style = {'edgecolor': edge_rgb, 'linewidth': 1.5, 'zorder':2}
+
+	ptitle =  f'{var1.name}_{var2.name} ratio' + run_name
+	fig, ax = plt.subplots( figsize =(4,4), tight_layout=True )
+	# fig.suptitle( ptitle )
+	q16, q84 = np.quantile( ratio, [0.16, 0.84])
+	hh = ax.hist( x=ratio, bins='doane', color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
+	ax.axvline( x=1, ls='--', c='k', alpha=0.9)
+	ax.axvline( x=mean_r, ls=':', c='orange', label=f'mean = {mean_r :.2f}' )	
+	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
+		label=rf'$\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
+	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=ptitle )
+	ax.legend()
+	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	plt.show()
+
+
 
 def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name=''):
 
@@ -178,9 +205,9 @@ def plot_mass_env( df, run_name, ):
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{env, obs} $ [M$_{\odot}$]', xscale='log', yscale='log', title=ptitle )
 	ax.axis( 'square')
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	# [ fig.savefig( ptitle + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	plt.show()
-	# plt.close()
+	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	# plt.show()
+	plt.close()
 
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
 	ax.scatter( x=df.Mes/100, y=df.Fv_env, marker='*', c='r', alpha=0.7)
@@ -213,6 +240,8 @@ def plot_mass_compare( df, run_name, Tavg, simple_M):
 	# plt.show()
 	plt.close()
 
+	ratio_histogram( df.M_obs, df.M_sim/100, run_name, histcolor='tab:red')
+
 
 def plot_radius_compare( df, res_limit, run_name):
 	'''Assuming R_obs is R_90, in [au]. '''
@@ -237,6 +266,8 @@ def plot_radius_compare( df, res_limit, run_name):
 	[ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
+
+	ratio_histogram( df.R_obs, df.R_sim, run_name, histcolor='tab:green')
 
 
 def plot_inc_compare( df, run_name):
@@ -788,7 +819,7 @@ if __name__=='__main__':
 	# plot_correlations( Rdf, run_name=run_suffix )
 
 
-# Texp = 7200
+# Texp = 3600
 # model_comps = '2c'
 # xsrc_flag = 'xsrc'
 # wle = 0.003
@@ -796,39 +827,13 @@ if __name__=='__main__':
 # # savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
 # run_name = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
 # config_name = 'alma.cycle11.7' 
+# # diskname = 'disk65_xy'
 
 # # # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
 # Rdf = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')
 # # plot_correlations( Rdf, run_name )
 
 
-# # logR = np.log10( Rdf.R_obs / Rdf.R_sim )
-
-# # plt.hist( logR, bins=10)
-# # plt.axvline( 0.12, c='r')
-# # plt.show()
-
-# # np.nanmean( logR)
-# histvar =  Rdf.R_obs / Rdf.R_sim
-# median = np.nanmedian( histvar )
-
-
-# plt.rcParams.update({ 'font.size':10, 'legend.fontsize':7, 'figure.dpi':300})
-# ptitle = 'Radius histogram' + run_name
-# fig, ax = plt.subplots( figsize =(3,3), tight_layout=True )
-# # fig.suptitle( ptitle )
-# ax.hist( x=histvar, bins=15, color='tab:green' )
-
-# ax.axvline( x=1, ls=':', c='k' )
-# ax.axvline( x=np.nanmedian( histvar ), ls='-', c='red' )			# y=x identity
-# # ax.axvline( x=np.nanstd( histvar ), ls='-', c='red' )	
-
-# ax.text( x=0.01, y=0.85, s= f'std: {np.nanstd( histvar) :1.1f}',
-# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
-# ax.set( xlabel= r'$ R_\mathrm{obs} / R_\mathrm{sim} $ ', ylabel=r'counts', title=ptitle )
-# # ax.axis( 'square')
-# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-# plt.show()
 
 # y = df.epsilon_M  	# mass relative error
 # ptitle = 'Mass error correlations_alt'
