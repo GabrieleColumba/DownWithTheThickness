@@ -7,7 +7,7 @@ from visibfit_functions import *
 import argparse
 
 # Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples ?)	
-NOfit = [29, 63, 75]
+NOfit = [63, 75]
 
 if __name__=='__main__':
 
