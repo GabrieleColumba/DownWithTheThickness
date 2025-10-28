@@ -348,9 +348,24 @@ def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_
 	return sampler
 
 
+# def mask_chains( samples, thresh=5):
+# 	'''
+# 	Mask the walker values that are more than thresh sigma away from the median. This removes the steps of a walker before it finds the common minimum.
+# 	'''
+# 	step_median = np.median( samples, axis=1, keepdims=True)		# median at every step among walkers (evaluate step by step)
+# 	walkers_std = np.std( samples, axis=1, keepdims=True)			# stds of walkers spread for given step and param
+# 	masked = np.where( np.abs( samples - step_median)  > thresh * walkers_std, np.nan, samples )
+# 	if np.isnan( masked ).any():
+# 		print( f'Masked {np.count_nonzero( np.isnan(masked))} walker values that are more than {thresh} sigma away from the step median.')
+# 		return masked
+# 	else:
+# 		print( 'No walkers to mask.')
+# 		return samples
+	
+	
 def clip_chains( samples, thresh=5):
 	'''
-	Discard the walkers that are more than thresh sigma away from the median.
+	Discard the walkers that are more than thresh sigma away from the median. This removes entire walkers that are stuck throughout the chain.
 	'''
 	steps_median = np.median( samples, axis=0)		# median of all the steps for each walker
 	param_std = np.std( steps_median, axis=0)		# std of parameter posteriors
@@ -409,7 +424,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 	# best parameters from the walker step with lowest chi2
 	# best_idx = np.unravel_index( samp_bkend.get_log_prob().argmin(), samp_bkend.get_log_prob().shape )
 	# best_pars = samp_bkend.get_chain()[best_idx]
-	best_pars = np.percentile( flat_samples,  50, axis=0)     # best params out of fit
+	best_pars = np.percentile( flat_samples,  [50, 16, 84], axis=0).T     # best params out of fit + 16% - 18% values !
 	return best_pars
 
 
@@ -627,6 +642,26 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 		casa_table.open( vistab_name ) #  + '.binned' )
 		uvp.io.export_uvtable( 'uvtab.txt', tb=casa_table, vis=vistab_name, datacolumn='CORRECTED_DATA') # CORRECTED_DATA ? Beware final residuals computation
 		casa_table.close()
+	
+	print('\n  Subtracting EXTRA SOURCES from MOCK OBS visibility data!  \n')
+	extra_sources = copy_extra_sources( diskname, nRMS=nRMS, config_name=config_name )
+	u, v = get_galargs(wle=wle)[5:7]
+	vis_extra = gd.sampleImage( extra_sources[0], extra_sources[1], u, v, PA=0, dRA=+extra_sources[1], dDec=+extra_sources[1], origin='lower', check=False)	# different pixscale than target model!
+	casa_table = cto.table()
+	casa_table.open( f'{diskname}.{config_name}.noisy.ms', nomodify=False )
+	corr_data = casa_table.getcol('CORRECTED_DATA')		# copy original data
+	corr_data[:] = corr_data[:] - vis_extra				# copy model visibilities broadcasted to correct shape
+	casa_table.putcol( 'CORRECTED_DATA', corr_data )	# add the fitted model to the MS, here just to be imaged
+	casa_table.flush()
+	casa_table.close()
+
+	vistab_name = f'{diskname}.{config_name}.noisy.ms'		# name of CASA visibility table
+	# ctk.split( vis= vistab_name, keepflags=False, outputvis=vistab_name + '.binned', timebin='30s', datacolumn='all')
+	casa_table = cto.table()
+	casa_table.open( vistab_name ) #  + '.binned' )
+	uvp.io.export_uvtable( 'uvtab.txt', tb=casa_table, vis=vistab_name, datacolumn='CORRECTED_DATA') # CORRECTED_DATA ? Beware final residuals computation
+	casa_table.close()
+
 	print( '\nMock observation completed !\n')
 
 
@@ -814,73 +849,64 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 
 
 def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, extra_sources=[0,0], wle=mm3, config_name='' ):
-	''' Produce UVplots for all the bestfit solutions. '''
-	# uvbin_size = 30e3     # uv-distance bin, units: wle
+	'''
+	Produce UVplots for all the bestfit solutions. 
+	'''
+	bestfit = bestfit_arr[:,0].copy()	# only take the best values (no errors)
+	inc, PA, dRA, dDec = bestfit[-4:]
+	inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert !
+	(diskmod, envmod), chi2, vis_mods = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp, extra_sources=extra_sources )
+	Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w = galargs
 
-	if bestfit_arr.ndim < 2:
-		bestfit_arr = np.expand_dims( bestfit_arr, axis=0)
-	
-	for b in range( bestfit_arr.shape[0] ):		# iterate on the given b best solutions
-		bestfit = bestfit_arr[b,:].copy()
-		# compute the visibilities of the bestfit model
-		inc, PA, dRA, dDec = bestfit[-4:]
-		inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert !
-		(diskmod, envmod), chi2, vis_mods = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp, extra_sources=extra_sources )
-		Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w = galargs
-		amod = 0.02
-		mod_lab = None
+	rot_target = snd.rotate( diskmod + envmod, angle=-PA/deg, reshape=False )   	# correct for PA rotation  
+	r_s_target = snd.shift( rot_target, shift=( dDec/dxy, -dRA/dxy ) )  			# shift the model to match the mock obs 
+	if np.any( extra_sources[0] ):
+		npix, pixscale = extra_sources[0].shape[0], extra_sources[1]
+	else:		# these two should coincide anyway
+		table = cto.table()
+		table.open( f'{diskname}.{config_name}.noisy.image' )		# only for shape and pixscale
+		npix = table.getcol('map').squeeze().shape[0]
+		pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])	# [rad/pix]
+		table.close()
 
-		if b==0:	# do this only for the best one of all
-			rot_target = snd.rotate( diskmod + envmod, angle=-PA/deg, reshape=False )   	# correct for PA rotation  
-			r_s_target = snd.shift( rot_target, shift=( dDec/dxy, -dRA/dxy ) )  			# shift the model to match the mock obs 
-			if np.any( extra_sources[0] ):
-				npix, pixscale = extra_sources[0].shape[0], extra_sources[1]
-			else:		# these two should coincide anyway
-				table = cto.table()
-				table.open( f'{diskname}.{config_name}.noisy.image' )		# only for shape and pixscale
-				npix = table.getcol('map').squeeze().shape[0]
-				pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])	# [rad/pix]
-				table.close()
-			
-			bestmod_image = resample_image( r_s_target, npix_new=npix, old_pixscale=dxy, new_pixscale=pixscale ) + extra_sources[0]		# resample to the sky data pixel scale
-			hdr = fits.Header({'CTYPE1':'RA---SIN', 'CRVAL1': 246.6175, 'CRPIX1': bestmod_image.shape[1]/2, 'CDELT1': np.rad2deg(pixscale), 'CUNIT':'degree', 
-					  		'CTYPE2':'DEC--SIN', 'CRVAL2': -24.4017, 'CRPIX2': bestmod_image.shape[0]/2, 'CDELT2': np.rad2deg(pixscale),
-					  		'DXY_orig': dxy, 'DR': dR, 'NR': nR, 'Funit':'[Jy/pix]'})
-			fits.writeto( 'best_model.fits', bestmod_image[:, ::-1], overwrite=True, header=hdr)	# save it like skycut
-			
-			# observations uv-plot
-			uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
-			uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
-			uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-			axes = uv.plot( label='Data', linestyle='.', color='k', yerr=True, uvbin_size=uvbin_size )
+	bestmod_image = resample_image( r_s_target, npix_new=npix, old_pixscale=dxy, new_pixscale=pixscale ) + extra_sources[0]		# resample to the sky data pixel scale
+	hdr = fits.Header({'CTYPE1':'RA---SIN', 'CRVAL1': 246.6175, 'CRPIX1': bestmod_image.shape[1]/2, 'CDELT1': np.rad2deg(pixscale), 'CUNIT':'degree', 
+					'CTYPE2':'DEC--SIN', 'CRVAL2': -24.4017, 'CRPIX2': bestmod_image.shape[0]/2, 'CDELT2': np.rad2deg(pixscale),
+					'DXY_orig': dxy, 'DR': dR, 'NR': nR, 'Funit':'[Jy/pix]'})
+	fits.writeto( 'best_model.fits', bestmod_image[:, ::-1], overwrite=True, header=hdr)	# save it like skycut
 
-			red_chi2 = chi2/(nR - len(bestfit))
-			print( '\ngalario Chi^2: ', chi2, '\n reduced chi2: ', red_chi2 ,'\n\n' )
-			np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
-			amod = 1.
-			mod_lab = 'Total model'
+	# observations uv-plot - xsrc !
+	uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs - vis_mods[1].real, Im_obs - vis_mods[1].imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+	uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
+	uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+	axes = uv.plot( label='Data', linestyle='.', color='k', yerr=True, uvbin_size=uvbin_size )
 
-		# model uv-plot
-		vis_tot = vis_mods[0] + vis_mods[1]		# sum target and xsrc vis
-		uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_tot.real, vis_tot.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
-		uv_mod.apply_phase( -dRA, -dDec)     # center the source on the phase center
-		uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-		uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=amod, label=mod_lab, yerr=False, uvbin_size=uvbin_size)
+	red_chi2 = chi2/(nR - len(bestfit))
+	print( '\ngalario Chi^2: ', chi2, '\n reduced chi2: ', red_chi2 ,'\n\n' )
+	np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
 
-		if two_comp:
-			for i, comp in enumerate([diskmod, envmod]):		# separately plot disk and envelope contributions
-				colors, labs = ['tab:blue', 'tab:green'], ['disk','envelope']
-				comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')		# sum target and xsrc vis
-				uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
-				uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
-				uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-				uv_mod.plot( axes=axes, linestyle='--', color=colors[i], alpha=0.8, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size)
+	# model uv-plot
+	vis_tot = vis_mods[0] #+ vis_mods[1]		# target  ##and xsrc vis
+	uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_tot.real, vis_tot.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+	uv_mod.apply_phase( -dRA, -dDec)     # center the source on the phase center
+	uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+	uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
+
+	if two_comp:
+		for i, comp in enumerate([diskmod, envmod]):		# separately plot disk and envelope contributions
+			colors, labs = ['tab:blue', 'tab:green'], ['disk','envelope']
+			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')		# sum target and xsrc vis
+			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
+			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)	# deproject only for disk?
+			uv_mod.plot( axes=axes, linestyle='--', color=colors[i], alpha=0.8, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size)
 
 	axes[0].axes.set( xscale='log', yscale='log')
 	axes[1].axes.set( xscale='log')
 	if axes[0].axes.get_ylim()[0] < 1e-5: axes[0].axes.set( ylim=[1e-5, axes[0].axes.get_ylim()[1]] )		# force lower ylim at 1e-5
 	axes[0].figure.savefig( 'uvplot_log' + fig_ext)
 	plt.close()
+
 	return bestmod_image, vis_mods
 
 # uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
@@ -914,14 +940,14 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	if burnin is None:
 		burnin = nsteps//3
 	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
-	np.savetxt( f'bestfit_params.txt', bestfit )
-	bestfit = np.loadtxt('bestfit_params.txt')
+	np.savetxt( f'bestfit_params.txt', bestfit )		# save a (Npar, 3) table with the columns being: best value, 16p, 84p
+	# bestfit = np.loadtxt('bestfit_params.txt')
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
 	if extra_sources is None:
-		extra_sources = copy_extra_sources( diskname, nRMS, config_name ) if monosource==False else (0,0)
+		extra_sources = (0,0) # copy_extra_sources( diskname, nRMS, config_name ) if monosource==False else (0,0)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle, config_name=config_name)
-	residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
+	# residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
@@ -956,7 +982,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 	'''
 	os.chdir( savedir + diskname )
 	galargs = get_galargs( wle=wle) 
-	extra_sources = copy_extra_sources( diskname, nRMS=nRMS, config_name=config_name ) if monosource==False else (0,0)		# deal with multiplicity in FoV
+	extra_sources = (0,0) # copy_extra_sources( diskname, nRMS=nRMS, config_name=config_name ) if monosource==False else (0,0)		# deal with multiplicity in FoV
 
 	# parameter space domain
 	p_ranges_2c = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
