@@ -775,7 +775,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
 	best_img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
 	casa_table.close()
-	ptitle = 'Bestfit model' 
+	ptitle = 'Bestfit model (obs)' 
 	fig, ax = plt.subplots( figsize=(6,6))  
 	ci = ax.imshow( best_img.T , origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=min_bkg_rms( noisy_img ), vmax=None, clip=True) )    # transpose to have as sky model
 	ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
@@ -830,7 +830,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	fig.savefig( ptitle + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
-	np.save( 'best_residuals', arr=best_res )	# save to file
+	np.save( './bestmod/best_residuals', arr=best_res )	# save to file
 	return
 
 
@@ -925,6 +925,60 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, ext
 # axes[1].axes.set( xscale='log')
 # plt.show()
 
+
+def quadruplot( diskname, config_name, as_margin=3. ):
+	'''
+	Just plot together in a nice cut four panels about a target: sky model, mock-obs, model mock obs, residuals
+	'''
+	hdul = fits.open( 'skycut.fits' )		# load sky model 
+	pixscale_s = hdul[0].header['CDELT1']		# [deg / pix]
+	sky_image = hdul[0].data #.byteswap().newbyteorder()   	# byteswap is needed for cv2 blurring
+	pixcut = int( as_margin / (pixscale_s * 3600) )			# margin in pixel
+	skycut = crop_image( sky_image, margins=[ pixcut, pixcut])[:, ::-1 ]		# make it even [1:, 1:]?
+
+	ct = cto.table()
+	ct.open( f'{diskname}.{config_name}.noisy.image' )		# cleaned simanalyze simulation image
+	noisy_img = ct.getcol('map').squeeze().copy( order='F').T
+	pixscale_m = np.rad2deg( abs( ct.getkeyword('coords')['direction0']['cdelt'][0]) ) * 3600		# [arcsec/pix]
+	beam_dict = ct.getkeyword('imageinfo')['restoringbeam']						# a, b and PA of beam [",",deg]
+	bmaj = beam_dict['major']['value'] / pixscale_m 
+	bmin = beam_dict['minor']['value'] / pixscale_m; PA = beam_dict['positionangle']['value']	
+
+	ct.open( './bestmod/best_model.image' )						# [Jy/beam]
+	best_model = ct.getcol('map').squeeze().copy( order='F').T 	# best model clean img
+	ct.close()
+	best_res = np.load( 'best_residuals.npy' ).T 				# cleaned residuals img
+	rms = min_bkg_rms( noisy_img )
+	
+	modlist = [noisy_img, best_model, best_res]
+	pixcut_m = int( as_margin / pixscale_m )		# margin in pixel
+	for i in range(len(modlist)):
+		modlist[i] = crop_image( modlist[i], margins=[ pixcut_m, pixcut_m])
+
+	ptitles = ['Simulated sky', 'Observation', 'Residuals', 'Model']
+	units = ['Jy/pix', 'Jy/beam', 'RMS units', 'Jy/beam']
+	fig, axs = plt.subplots( 2,2, figsize=(6,6), layout='tight') ; axs = axs.flatten()
+	fig.suptitle( diskname, fontweight='bold' ) 
+	simc = axs[0].imshow( skycut,     origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')
+	obsc = axs[1].imshow( modlist[0], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
+	modc = axs[3].imshow( modlist[1], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
+	resc = axs[2].imshow( modlist[2], origin='lower', norm=mpl.colors.CenteredNorm( vcenter=0), cmap='RdBu_r')
+
+	for i, cb in enumerate([simc, obsc, resc, modc]):
+		fig.colorbar( cb, ax=axs[i], shrink=0.77, pad=0.005, label=units[i])
+		if i > 0: 
+			beam_patch = mpl.patches.Ellipse( (10, 10), width=bmaj, height=bmin, angle=90 + PA, # transform=axs[1].transAxes, 
+						facecolor='gray', edgecolor='gray', linewidth=1, alpha=1 )
+			axs[i].add_patch( beam_patch )
+		axs[i].set( title= ptitles[i], aspect='equal')	#, fontsize=9)
+		# axs[i].axis('off')
+		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
+
+	# plt.show()
+	fig.savefig( f'quadplot_{diskname}' + fig_ext , bbox_inches='tight', dpi=400)
+	plt.close()
+
+
 def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, extra_sources=None, nRMS=1.5, burnin=None, walksigma=4, wle=mm3, savedir='', config_name=''):
 	'''
 	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
@@ -948,6 +1002,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 		extra_sources = (0,0) # copy_extra_sources( diskname, nRMS, config_name ) if monosource==False else (0,0)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle, config_name=config_name)
 	# residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
+	quadruplot( diskname=diskname, config_name=config_name )
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
