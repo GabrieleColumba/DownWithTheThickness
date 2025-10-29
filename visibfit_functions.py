@@ -19,6 +19,7 @@ import galario.double as gd
 from galario import deg, arcsec
 import scipy.ndimage as snd
 from scipy.optimize import curve_fit
+from scipy.interpolate import RegularGridInterpolator
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
@@ -75,6 +76,31 @@ def Plummer_envelope( R, I0, Ri, Rout, p_index ):
 	return I
 
 
+def diskheight_correction( model_image, dxy, sigma, inc, H_r=0.35):
+	'''
+	Give thickness to galario models with a simple trick.
+	'''
+	# cc = np.arange( model_image.shape[0])	# clearly img must be square
+	# interp = resample_image( model_image, npix_new=model_image.shape[0], new_pixscale=1, old_pixscale=4, order=1 ) * 4**2		# does not preserve flux ?
+	# H_r = 0.35
+	R = sigma *2.1436209	# rad, factor for r90
+	H = R * H_r				# rad
+	l = H * np.sin( inc)	# rad LoS-projected disk height
+	pixheight = l / dxy		# [pix] projected disk height
+	thickened = model_image.copy()
+	for i in range(1, round(pixheight) +1):
+		s_target = np.roll( model_image, shift=i, axis=1) # snd.shift( model_image, shift=( 0, i ) )  			# shift the model
+		thickened = thickened + s_target
+	thickened = thickened / (1 + round(pixheight) )		# divide by number of superpositions so total flux is roughly conserved
+
+	xx, yy = np.meshgrid( np.arange( model_image.shape[0]) , np.arange( model_image.shape[0]) )		# create grid for centring	
+	thick_cent = snd.map_coordinates( thickened, coordinates=[ yy , xx + round(pixheight) / 2], order=1, cval=0, prefilter=True)	# centre as original !
+	# thick_centred = snd.shift( thickened, shift=( ))
+	# plt.imshow( resampled - model_image) #, norm=mpl.colors.LogNorm() )
+	# plt.show()
+	return thick_cent
+
+
 def galario_model( pars, galargs, two_comp=True, extra_sources=[0,0]):
 	'''
 	Let galario generate a model on the visibilities and return a Chi2 to the data.
@@ -106,6 +132,7 @@ def galario_model( pars, galargs, two_comp=True, extra_sources=[0,0]):
 		target_model = disk_model + env_model
 	else: 
 		disk_model, env_model = gd.sweep( I_disk + I0e, Rmin, dR, nxy, dxy, inc=inc), 0		# I0e here is an additional constant for background
+		disk_model = diskheight_correction( disk_model, dxy=dxy, sigma=sigma, inc=inc )		# add disk thickness
 		target_model = disk_model
 	# Compute visibilities for the central target that requires rotation and offsets (with PA, inc, dRA, dDec)
 	vis_target = gd.sampleImage( target_model, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower') 
@@ -1001,7 +1028,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	if extra_sources is None:
 		extra_sources = (0,0) # copy_extra_sources( diskname, nRMS, config_name ) if monosource==False else (0,0)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, extra_sources=extra_sources, wle=wle, config_name=config_name)
-	# residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
+	residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
 	quadruplot( diskname=diskname, config_name=config_name )
 
 	# # best model visual check
