@@ -63,8 +63,8 @@ if __name__=='__main__':
 			fname = data_path + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
 		
 		if args["replot_only"]:	
-			diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
-			#diskname = fname.replace( savedir, '' )
+			diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')		# for single disk names
+			#diskname = fname.replace( savedir, '' )															# for array sbatch runs
 			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
 			sys.exit()		# replot and terminate before regressions
 

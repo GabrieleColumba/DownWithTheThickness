@@ -282,7 +282,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=12, alpha=1.)
 	ax.text( x=0.01, y=0.85, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
-	axlims = [ 3e-5, 0.9e-2]
+	axlims = [ 3e-5, 1.2e-2]
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xscale='log', yscale='log', xlim=axlims, ylim=axlims, aspect='equal', title=ptitle )
 	# ax.axis( 'square')
 	# ax.set_box_aspect(1)
@@ -862,7 +862,7 @@ if __name__=='__main__':
 	# parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
 	args = vars( parser.parse_args() )
 
-	model_comps = '2c' if args['2c'] else '1c'
+	model_comps = '2c' if args['2c'] else 'g+'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
 	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
