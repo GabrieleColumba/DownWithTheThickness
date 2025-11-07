@@ -19,7 +19,7 @@ if __name__=='__main__':
 	parser.add_argument('-nsteps', type=int, default=5000, help='MCMC steps (default: 5000)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-replot_only', action='store_true', help='replot all the bestfit plots for the fitting part (default: False)')
-	parser.add_argument('-nRMS', type=float, default=3, help='nRMS to threshold the xsrc detection (default: 1.5)')
+	parser.add_argument('-nRMS', type=float, default=5, help='nRMS to threshold the xsrc detection (default: 5)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')		# deprecated now
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )
@@ -42,7 +42,7 @@ if __name__=='__main__':
 		for fname in disklist:
 			if args["replot_only"]:		# check the disk already regressed and produce again plots
 				diskname = fname.replace( savedir, '' )
-				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
+				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_name )
 			else:						# perform the regression from scratch
 				diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 				if int( diskname.strip( 'disk_xyz') ) in NOfit:
@@ -65,7 +65,7 @@ if __name__=='__main__':
 		if args["replot_only"]:	
 			diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')		# for single disk names
 			#diskname = fname.replace( savedir, '' )															# for array sbatch runs
-			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=4, wle=wle, savedir=savedir, config_name=config_name )
+			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_name )
 			sys.exit()		# replot and terminate before regressions
 
 		diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
