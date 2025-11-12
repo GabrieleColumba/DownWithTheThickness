@@ -16,12 +16,13 @@ import uvplot as uvp
 import galario.double as gd 
 from galario import deg, arcsec
 import scipy.ndimage as snd
-from scipy.optimize import curve_fit
+# from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 
 mm3 = 0.003		# wavelength [metres]
+Rmax_model = 7	# [arcsec]	
 
 def compare_gauss_plumm():
 	rarr = np.linspace(0, 6, 600)
@@ -181,7 +182,7 @@ def copy_extra_sources( diskname, nRMS, config_name='', deconvmod=True ):
 			diag_img[ label_image == target_idx ] = np.nan
 		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )	# use noisy_img just for diagnostic plot
 		ax.set_axis_off()
-		fig.savefig( 'multi-source_map' + fig_ext, bbox_inches='tight', dpi=300)
+		fig.savefig( 'sky_xsrc_map' + fig_ext, bbox_inches='tight', dpi=300)
 		plt.close()
 	else: 
 		print( '\nNo extra sources found in the image!\n' )
@@ -207,47 +208,8 @@ def xsrc_to_visib( extra_sources, u, v ):
 		xsrc_vis = xsrc_vis + vis_sh
 	return xsrc_vis
 
-	# MSname = f'{diskname}.{config_name}.noisy.ms'		# mock obs MS
-	# os.system( f'cp -R {MSname}/ NoisyMS_copy/')
-	# casa_table = cto.table()
-	# casa_table.open( 'NoisyMS_copy', nomodify=False )	# leave the original MS untouched
-	# corr_data = casa_table.getcol('CORRECTED_DATA')		# copy original data
-	# modeldata = corr_data[:].copy()						# inherit the shape structure
-	# obsvis = galargs[-3] + galargs[-2]*1.j
-	# modeldata[:] =  xsrc_vis 							# copy model visibilities broadcasted to correct shape
-	# casa_table.putcol( 'CORRECTED_DATA', modeldata )	# add the fitted model to the MS, here just to be imaged
-	# casa_table.flush()
-	# casa_table.close()
 
-	# ctk.tclean(		# image the model !
-	# 	vis='NoisyMS_copy',
-	# 	imagename='./xsrc/noisy',
-	# 	datacolumn='corrected',  	# Use the corrected_data where we stored the model visibilities
-	# 	imsize=extra_sources[0].shape,			# to then compare directly with noisy image
-	# 	cell = f'{extra_sources[1]}rad',
-	# 	phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
-	# 	weighting='briggs',
-	# 	niter=1000, 	 
-	# 	nsigma=1,
-	# 	) 
-	
-	# casa_table.open( './xsrc/noisy.image' )		# the one created above, in [Jy/beam]
-	# noisy = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img	
-	# casa_table.open( './xsrc/pbcor.image' )		# the one created above, in [Jy/beam]
-	# pbcor = casa_table.getcol('map').squeeze().copy( order='F')  			
-	# casa_table.close()
-	# ptitle = ' model (obs)' 
-	# fig, ax = plt.subplots( figsize=(6,6))  
-	# ci = ax.imshow( (noisy - pbcor).T , origin='lower', cmap='RdBu', norm=mpl.colors.CenteredNorm() )    # transpose to have as sky model
-	# ax.set( title=ptitle, ) #, xlabel='au', ylabel='au')
-	# ax.axis( 'off' )
-	# fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
-	# plt.show()
-	# # fig.savefig( ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
-	# # plt.close()
-
-
-#  my MCMC functions
+##  MCMC functions
 
 def log_likelihood( pars, galargs, two_comp): 
 	'''Galario fit chi2 likelihood function'''
@@ -258,13 +220,11 @@ def log_prior( pars, p_ranges, two_comp):
 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
 		if two_comp == True:
-			# if ( 2* pars[3] < pars[4]):		# impose that 2 Ri < Rout  (pars[2] <= pars[3]): 
-			return 0.0
-			# else: return -np.inf
-		else:
-			if (pars[1] <= pars[0]): 				# impose that Idisk > Ienv
+			if ( pars[3]*pars[4] < Rmax_model ):		# impose that  Rout < Rmax (galario grid) 
 				return 0.0
-			else: return -np.inf	
+			else: return -np.inf
+		else:
+			return 0.0
 	else:	
 		return -np.inf
 
@@ -275,7 +235,7 @@ def log_probability( pars, p_ranges, galargs, two_comp):
 	return logprior + log_likelihood( pars, galargs, two_comp)
 
 
-def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_comp=False, backend_fname='last_sampler', append=False):
+def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False, backend_fname='last_sampler', append=False):
 	'''
 	Launch an MCMC run for the galario fitting. 
 	galargs:  	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w
@@ -284,7 +244,6 @@ def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_
 	'''
 	ndim = len(p0)
 	startpos = None
-
 	bknd_samp = emcee.backends.HDFBackend( backend_fname + '.h5')		# store sampler on file
 	if append == False: 
 		bknd_samp.reset( nwalkers=nwalkers, ndim=ndim)
@@ -298,7 +257,6 @@ def mcmc_run( galargs, p0, p_ranges, nsteps=2000, nwalkers=40, nthreads=10, two_
 			# moves=[ (emcee.moves.StretchMove(), 0.5), (emcee.moves.DEMove(), 0.5),], 		# mv2
 			# moves = emcee.moves.KDEMove(), 	# mv3	
 			)
-	
 	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
 	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
 	# sampler.reset()
@@ -540,7 +498,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	hdr['CRPIX1'] = hdr['CRPIX2'] = skycut.shape[0] / 2
 	hdr['CRVAL1'] = 246.6175 ; hdr['CRVAL2'] = -24.4017		# so that central pixel corresponds to centre of pointing file 1x
 	hdr['CTYPE1'] = 'RA---SIN'; hdr['CTYPE2'] = 'DEC--SIN'; 		# uniform it to CASA products
-	fits.writeto( 'skycut.fits', skycut, header=hdr, overwrite=True)
+	fits.writeto( 'skycut.fits', np.float32( skycut ), header=hdr, overwrite=True)
 	
 	plt.imshow(  np.clip( skycut[:, ::-1 ], a_min=1e-8, a_max=None), 		# 1e-8 Jy/pix should be a fair rms low bound
 			origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')
@@ -618,6 +576,17 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 				phasecenter='ICRS 16h26m28.2s  -24d24m06.12s', deconvolver='clark', 
 				weighting='briggs', niter=10, nsigma=1, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
 			
+			casa_table.open( './xsrc_sub/rough.image' )		# the one created above, in [Jy/beam]
+			img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
+			casa_table.close()
+			ptitle = 'Target - xsrc (quick clean)' 
+			fig, ax = plt.subplots( figsize=(6,6))  
+			ci = ax.imshow( img.T , origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=1e-6, vmax=None, clip=True) )    # transpose to have as sky model
+			ax.set( title=ptitle, ) ; ax.axis( 'off' )
+			fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
+			fig.savefig( ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=200)
+			plt.close()
+			
 	if vistab_export:				# export the CASA MS to UV table suited for GALARIO
 		# ctk.split( vis= vistab_name, keepflags=False, outputvis=vistab_name + '.binned', timebin='30s', datacolumn='all')
 		casa_table = cto.table()
@@ -646,7 +615,7 @@ def min_bkg_rms( image):
 	return min( min(bkg_rms), rms(image) )
 
 
-def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
+def residuals_vis_plot( diskname, model_vis, T_exp, config_name):
 	'''
 	Calculate the residuals between the visibilities of the mock observations and the bestfit model (galario + multisource).
 	'''
@@ -668,13 +637,11 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 		vis= MSname,
 		imagename='./bestmod/best_model',
 		datacolumn='corrected',  		# Use the corrected_data where we stored the model visibilities
-		imsize=noisy_img.shape,	
+		imsize= noisy_img.shape,	
 		cell = f'{pixscale}rad',
 		phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
-		weighting='briggs',
-		niter=10000, 	 
-		nsigma=1,
-		threshold= f'{ 2* analytic_sensitivity(t=T_exp) :.4f}mJy',
+		weighting='briggs', deconvolver='clark', 
+		niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 	
 	casa_table.open( './bestmod/best_model.image' )		# the one created above, in [Jy/beam]
@@ -697,14 +664,12 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	ctk.tclean(			# image the residuals !
 		vis= MSname,
 		imagename='./bestmod/residuals',
-		datacolumn='corrected',  	# Use the corrected_data where we stored the model visibilities
-		imsize=noisy_img.shape,			# to then compare directly with noisy image
+		datacolumn='corrected',  			# Use the corrected_data where we stored the residual visibilities
+		imsize= noisy_img.shape,			# compare with noisy image
 		cell = f'{pixscale}rad',
-		weighting='briggs',
+		weighting='briggs', deconvolver='clark', 
 		phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
-		niter=10000, 	            # CLEANing, is this OK ?
-		nsigma=1,
-		threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
+		niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 
 	casa_table.open( './bestmod/residuals.image' )			# the one created above, in [Jy/beam]
@@ -723,7 +688,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp, galargs, config_name):
 	casa_table.open( MSname, nomodify=False )
 	casa_table.putcol( 'CORRECTED_DATA', orig_data )	# restore the original data at its place
 	casa_table.flush() ;	casa_table.close()
-	np.save( './bestmod/best_residuals', arr=best_res )	# save to file
+	np.save( './bestmod/best_residuals', arr=np.float32(best_res) )	# save to file
 	return
 
 
@@ -780,16 +745,18 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 	uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
 	uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 	uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
-	axes[0].text( x=0.01, y=0.50, s= f'$\chi^2_r$={red_chi2 :.3f}', ha='left', va='center', transform=axes[0].transAxes, color='gray', fontsize=9, alpha=1.)
+	axes[0].text( x=0.01, y=0.50, s= fr'$\chi^2_\nu$={red_chi2 :.3f}', ha='left', va='center', transform=axes[0].transAxes, color='gray', fontsize=9, alpha=1.)
 
 	if two_comp:
 		for i, comp in enumerate([diskmod, envmod]):		# separately plot disk and envelope contributions
 			colors, labs = ['tab:blue', 'tab:green'], ['disk','envelope']
 			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')	
 			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+			if i==0: uv_mod.save_ascii_uvtable( 'uvtab_disk.txt' )		# save visibilities of disk component for later subtraction from data
 			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
 			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 			uv_mod.plot( axes=axes, linestyle='--', color=colors[i], alpha=0.8, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size)
+			
 
 	axes[0].axes.set( xscale='log', yscale='log')
 	axes[1].axes.set( xscale='log')
@@ -800,15 +767,17 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 	return bestmod_image, vis_mod
 
 
-def quadruplot( diskname, config_name, as_margin=3. ):
+def quadruplot( diskname, config_name, as_margin=3., rulersize=100):
 	'''
-	Just plot together in a nice cut four panels about a target: sky model, mock-obs, model mock obs, residuals
+	Just plot together in a nice cut four panels about a target: sky model, mock-obs, model mock obs, residuals.
+	as_margin is the radius in [arcsec] of the panels FoV. rulersize in [au].
 	'''
 	hdul = fits.open( 'skycut.fits' )			# load sky model 
 	pixscale_s = hdul[0].header['CDELT1']		# [deg / pix]
 	sky_image = hdul[0].data #.byteswap().newbyteorder() 
 	pixcut = int( as_margin / (pixscale_s * 3600) )			# margin in pixel
 	skycut = crop_image( sky_image, margins=[ pixcut, pixcut])[:, ::-1 ] * 1000		# [mJy/pix] 
+	xc, yc = np.array( skycut.shape ) / 2
 
 	ct = cto.table()
 	ct.open( f'{diskname}.{config_name}.noisy.image' )		# cleaned simanalyze simulation image
@@ -837,8 +806,11 @@ def quadruplot( diskname, config_name, as_margin=3. ):
 	obsc = axs[1].imshow( modlist[0], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
 	resc = axs[2].imshow( modlist[1], origin='lower', norm=mpl.colors.CenteredNorm( vcenter=0), cmap='RdBu_r')
 	modc = axs[3].imshow( modlist[2], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
-	axs[1].text( x=0.2, y=0.1, s= f'RMS: {1000* rms :1.1f} mJy/beam', ha='left', va='center', transform=axs[1].transAxes,
-			color='gray', fontsize=8, alpha=1)
+	rls_pix = rulersize * 1/140 / (pixscale_s *3600)		# [au * arcsec/au * pix/arcsec]
+	axs[0].plot( [xc - 0.5*rls_pix, xc + 0.5*rls_pix], (yc - 0.9*pixcut )*np.array([1,1]), c='w', lw=2, alpha=.9)		# ruler patch
+	axs[0].text( xc-0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize :3.0f} au', color='w', ha='right', va='center', alpha=.8, fontsize=8) 
+	axs[0].text( xc+0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize/140 :0.3f}"', color='w', ha='left', va='center', alpha=.8, fontsize=8)
+	axs[1].text( x=0.05, y=0.9, s= f'RMS={rms :1.1e} Jy/beam', ha='left', va='center', transform=axs[1].transAxes, color='gray', fontsize=8, alpha=1)
 
 	for i, cb in enumerate([simc, obsc, resc, modc]):
 		fig.colorbar( cb, ax=axs[i], shrink=0.77, pad=0.00, label=units[i])
@@ -876,7 +848,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, wle=wle, config_name=config_name)
-	residuals_vis_plot( diskname, mod_vis, T_exp, galargs, config_name )
+	residuals_vis_plot( diskname, mod_vis, T_exp, config_name )
 	quadruplot( diskname=diskname, config_name=config_name )
 
 	# # best model visual check
@@ -893,15 +865,15 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 
 
 def get_galargs( wle):
-	u, v, Re_obs, Im_obs, w = np.require( np.loadtxt( f'uvtab.txt', unpack=True), requirements='C')
+	u, v, Re_obs, Im_obs, w = np.require( np.loadtxt( 'uvtab.txt', unpack=True), requirements='C')
 	u /= wle
 	v /= wle	# have the baselines in lambda units
-	nxy, dxy = gd.get_image_size( u, v, verbose=True) # , PB=1.13*wle/12 )		# number and size of pixel in radians
+	nxy, dxy = gd.get_image_size( u, v, verbose=False) # , PB=1.13*wle/12 )		# number and size of pixel in radians
 
 	# radial grid parameters
-	Rmin = 0  	# arcsec
-	Rmax = 8	# arcsec
-	dR = np.rad2deg(dxy) * 3600 / 11   	# arcsec
+	Rmin = 0  			# [arcsec]
+	Rmax = Rmax_model	# [arcsec]
+	dR = np.rad2deg(dxy) * 3600 / 11   	# [arcsec]
 	nR = int( Rmax / dR )			# dR per nr dnon deve superare il raggio massimo del modello,  3*MRS
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
@@ -917,9 +889,9 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 	p_ranges_2c = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
 						[7.8, 13.],		# Log10( IOenvelope)   
 						[1e-5, .8],		# sigma i.e. sma [arcsec]
-						[1e-4, 5],		# Ri [arcsec]
-						[2, 40],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
-						[1, 3.5],		# p_index []
+						[1e-4, 1.6],	# Ri [arcsec] (Rmax= 8 / 5 = 1.6, to avoid an envelope cut at high fluxes)
+						[5, 1000],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
+						[1.3, 3.5],		# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
@@ -934,8 +906,8 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2c = np.array([11, 8.4, 0.2, 1.0, 20., 2.8, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
-	p0_gauss = np.array([12, 0.4, 0.2, 80., 45., 0., 0.])				# Log(I0), sma, inc, PA, dRA, dDec
+	p0_2c = np.array([11, 8.4, 0.3, 0.5, 10., 2.5, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
+	p0_gauss = np.array([12, 0.2, 80., 45., 0., 0.])				# Log(I0), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c
 		p_rang_mc = p_ranges_2c
