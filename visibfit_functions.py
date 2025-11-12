@@ -752,7 +752,9 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 			colors, labs = ['tab:blue', 'tab:green'], ['disk','envelope']
 			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')	
 			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
-			if i==0: uv_mod.save_ascii_uvtable( 'uvtab_disk.txt' )		# save visibilities of disk component for later subtraction from data
+			if i==0: #uv_mod.save_ascii_uvtable( 'uvtab_disk.txt' )		# save visibilities of disk component for later subtraction from data
+				np.savetxt( 'uvtab_disk.txt', np.column_stack([uv_mod.u*wle, uv_mod.v*wle, uv_mod.V.real, uv_mod.V.imag, uv_mod.weights]), fmt='%10.6e',
+					delimiter='\t', header=f'wavelength[m] = {wle :.5f}\nColumns:	u[m]	v[m]	Re(V)[Jy]	Im(V)[Jy]	weight')
 			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
 			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 			uv_mod.plot( axes=axes, linestyle='--', color=colors[i], alpha=0.8, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size)
