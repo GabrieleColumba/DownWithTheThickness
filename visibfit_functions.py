@@ -706,7 +706,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle=mm3, config_name='' ):
+def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle=mm3, config_name='', make_modelimg=True, save_vis=False, Axes=None ):
 	'''
 	Produce UVplots for all the bestfit solutions. 
 	'''
@@ -716,63 +716,89 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 	(diskmod, envmod), chi2, vis_mod = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp )
 	Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w = galargs
 
-	rot_target = snd.rotate( diskmod + envmod, angle=-PA/deg, reshape=False )   	# correct for PA rotation  
-	r_s_target = snd.shift( rot_target, shift=( dDec/dxy, -dRA/dxy ) )  			# shift the model to match the mock obs 
-	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image' )		# only for shape and pixscale
-	npix = table.getcol('map').squeeze().shape[0]
-	pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])	# [rad/pix]
-	table.close()
+	if make_modelimg:
+		rot_target = snd.rotate( diskmod + envmod, angle=-PA/deg, reshape=False )   	# correct for PA rotation  
+		r_s_target = snd.shift( rot_target, shift=( dDec/dxy, -dRA/dxy ) )  			# shift the model to match the mock obs 
+		table = cto.table()
+		table.open( f'{diskname}.{config_name}.noisy.image' )		# only for shape and pixscale
+		npix = table.getcol('map').squeeze().shape[0]
+		pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])	# [rad/pix]
+		table.close()
 
-	bestmod_image = resample_image( r_s_target, npix_new=npix, old_pixscale=dxy, new_pixscale=pixscale )		# resample to the sky data pixel scale
-	# hdr = fits.Header({'CTYPE1':'RA---SIN', 'CRVAL1': 246.6175, 'CRPIX1': bestmod_image.shape[1]/2, 'CDELT1': np.rad2deg(pixscale), 'CUNIT':'degree', 
-					# 'CTYPE2':'DEC--SIN', 'CRVAL2': -24.4017, 'CRPIX2': bestmod_image.shape[0]/2, 'CDELT2': np.rad2deg(pixscale),
-					# 'DXY_orig': dxy, 'DR': dR, 'NR': nR, 'Funit':'[Jy/pix]'})
-	# fits.writeto( 'best_model.fits', bestmod_image[:, ::-1], overwrite=True, header=hdr)	# save it like skycut
-	
+		bestmod_image = resample_image( r_s_target, npix_new=npix, old_pixscale=dxy, new_pixscale=pixscale )		# resample to the sky data pixel scale
+		# hdr = fits.Header({'CTYPE1':'RA---SIN', 'CRVAL1': 246.6175, 'CRPIX1': bestmod_image.shape[1]/2, 'CDELT1': np.rad2deg(pixscale), 'CUNIT':'degree', 
+						# 'CTYPE2':'DEC--SIN', 'CRVAL2': -24.4017, 'CRPIX2': bestmod_image.shape[0]/2, 'CDELT2': np.rad2deg(pixscale),
+						# 'DXY_orig': dxy, 'DR': dR, 'NR': nR, 'Funit':'[Jy/pix]'})
+		# fits.writeto( 'best_model.fits', bestmod_image[:, ::-1], overwrite=True, header=hdr)	# save it like skycut
+	else: bestmod_image = [[0,0]]
+		
 	red_chi2 = chi2/(nR - len(bestfit))
 	print( '\ngalario Chi^2: ', chi2, '\n reduced chi2: ', red_chi2 ,'\n\n' )
-	np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
+	# np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
+	
+	# ptitle = 'Uvplot' + run_name
+	if Axes == None: 
+		fig, ax = plt.subplots( 1,1, figsize=(4,4), layout='tight')	
+	else: 
+		ax = Axes
+	axins = ax.inset_axes( [0,-0.27 , 1, 0.25] )			# create an inset for the imaginary part
 
-	# observations uv-plot !
-	uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
+	uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )		# observations uv-plot !
 	uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
 	uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-	axes = uv.plot( label='Data', linestyle='.', color='k', yerr=True, uvbin_size=uvbin_size, fontsize=8 )
-
-	# model uv-plot : disk (+ env)
-	uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+	uv.uvbin( uvbin_size)
+	mask = uv.bin_count != 0 # slice(None)
+	uvdist = uv.bin_uvdist[mask] / 1000
+	data_dict = {'fmt':'o', 'ms':6, 'color':'k', 'linewidth':0, 'capsize':2, 'ecolor':'gray', 'elinewidth':0.5, 'label':'Data', 'alpha':0.8}
+	ax.errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
+	axins.errorbar( x=uvdist, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
+	del uv
+	
+	uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )	# model uv-plot : disk (+ env)
 	uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
 	uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-	uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
-	axes[0].text( x=0.01, y=0.50, s= fr'$\chi^2_\nu$={red_chi2 :.3f}', ha='left', va='center', transform=axes[0].transAxes, color='gray', fontsize=9, alpha=1.)
+	# uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
+	uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
+	uvdist = uv_mod.bin_uvdist[mask] / 1000 
+	model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.6, 'label':'Model', 'alpha':0.95}	
+	ax.errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
+	axins.errorbar( uvdist, uv_mod.bin_im[mask], **model_dict)
+	ax.text( x=0.99, y=0.95, s= fr'$\chi^2_\nu$={red_chi2 :.3f}', ha='right', va='center', transform=ax.transAxes, color='gray', fontsize=9, alpha=1.)
+	del uv_mod
 
 	if two_comp:
 		for i, comp in enumerate([diskmod, envmod]):		# separately plot disk and envelope contributions
 			colors, labs = ['tab:blue', 'tab:green'], ['disk','envelope']
 			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')	
 			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
-			if i==0: #uv_mod.save_ascii_uvtable( 'uvtab_disk.txt' )		# save visibilities of disk component for later subtraction from data
-				np.savetxt( 'uvtab_disk.txt', np.column_stack([uv_mod.u*wle, uv_mod.v*wle, uv_mod.V.real, uv_mod.V.imag, uv_mod.weights]), fmt='%10.6e',
-					delimiter='\t', header=f'wavelength[m] = {wle :.5f}\nColumns:	u[m]	v[m]	Re(V)[Jy]	Im(V)[Jy]	weight')
+			if save_vis: np.save( 'visib_disk+env', arr=comp_vis )	
+			# if i==0: 				# save visibilities of disk component for later subtraction from data
+				# np.savetxt( 'uvtab_disk.txt', np.column_stack([uv_mod.u*wle, uv_mod.v*wle, uv_mod.V.real, uv_mod.V.imag, uv_mod.weights]), fmt='%10.6e',
+				# 	delimiter='\t', header=f'wavelength[m] = {wle :.5f}\nColumns:	u[m]	v[m]	Re(V)[Jy]	Im(V)[Jy]	weight')
 			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
 			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-			uv_mod.plot( axes=axes, linestyle='--', color=colors[i], alpha=0.8, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size)
-			
+			uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
+			uvdist = uv_mod.bin_uvdist[mask] / 1000 
+			comp_dict = { 'ls':'--', 'color':colors[i], 'lw':1.5, 'label':labs[i], 'alpha':0.92}
+			ax.errorbar( uvdist, uv_mod.bin_re[mask],  **comp_dict)
+			axins.errorbar( uvdist, uv_mod.bin_im[mask], **comp_dict)
+			# uv_mod.plot( axes=(ax, axins), linestyle='--', color=colors[i], alpha=0.9, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size, fontsize=10)
+			# ax.yaxis.set_label_coords(-0.1, 0.5) ; axins.yaxis.set_label_coords(-0.1, 0.5)	# get uvplot labels closer
 
-	axes[0].axes.set( xscale='log', yscale='log')
-	axes[1].axes.set( xscale='log')
-	if axes[0].axes.get_ylim()[0] < 1e-5: axes[0].axes.set( ylim=[1e-5, axes[0].axes.get_ylim()[1]] )		# force lower ylim at 1e-5
-	axes[0].figure.savefig( 'uvplot_log' + fig_ext)
+	ax.set( ylabel='Re(V) [Jy]', xscale='log', yscale='log') ; ax.legend( loc='best', bbox_to_anchor=(0, 0, 0.9, 0.9), fontsize=8)
+	axins.set( ylabel='Im(V) [Jy]', xscale='log', xlabel='uvdistance [k$\mathrm{\lambda}$]' )
+	if ax.get_ylim()[0] < 1e-5: ax.set( ylim=[1e-5, ax.get_ylim()[1]] )		# force lower ylim at 1e-5
+	if Axes != None: 
+		return ax
+	else: 
+		fig.savefig( 'uvplot_log' + fig_ext, dpi=300, bbox_inches='tight')
 	plt.close()
-
 	return bestmod_image, vis_mod
 
 
-def quadruplot( diskname, config_name, as_margin=3., rulersize=100):
+def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_name, as_margin=3., rulersize=100):
 	'''
-	Just plot together in a nice cut four panels about a target: sky model, mock-obs, model mock obs, residuals.
-	as_margin is the radius in [arcsec] of the panels FoV. rulersize in [au].
+	Just plot together in a nice cut four panels about a target: sky model, mock-obs, model mock obs, residuals
 	'''
 	hdul = fits.open( 'skycut.fits' )			# load sky model 
 	pixscale_s = hdul[0].header['CDELT1']		# [deg / pix]
@@ -794,7 +820,6 @@ def quadruplot( diskname, config_name, as_margin=3., rulersize=100):
 	ct.close()
 	best_res = np.load( './bestmod/best_residuals.npy' ).T 				# cleaned residuals img
 	rms = min_bkg_rms( noisy_img )
-	
 	modlist = [noisy_img, best_res, best_model]
 	pixcut_m = int( as_margin / pixscale_m )		# margin in pixel
 	for i in range(len(modlist)):
@@ -802,8 +827,8 @@ def quadruplot( diskname, config_name, as_margin=3., rulersize=100):
 
 	ptitles = ['Simulated sky', 'Observation', 'Residuals', 'Model']
 	units = ['mJy/pix', 'Jy/beam', 'RMS units', 'Jy/beam']
-	fig, axs = plt.subplots( 2,2, figsize=(6,6), layout='tight') ; axs = axs.flatten()
-	fig.suptitle( diskname, fontweight='bold' ) 
+	fig, axes = plt.subplots( 2,2, figsize=(6.5,6.5), layout='constrained' ) #; axes[1,2].set_visible(False)		# hide unused axes
+	axs = axes[0:2,0:2].flatten()
 	simc = axs[0].imshow( skycut,     origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')
 	obsc = axs[1].imshow( modlist[0], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
 	resc = axs[2].imshow( modlist[1], origin='lower', norm=mpl.colors.CenteredNorm( vcenter=0), cmap='RdBu_r')
@@ -813,9 +838,9 @@ def quadruplot( diskname, config_name, as_margin=3., rulersize=100):
 	axs[0].text( xc-0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize :3.0f} au', color='w', ha='right', va='center', alpha=.8, fontsize=8) 
 	axs[0].text( xc+0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize/140 :0.3f}"', color='w', ha='left', va='center', alpha=.8, fontsize=8)
 	axs[1].text( x=0.05, y=0.9, s= f'RMS={rms :1.1e} Jy/beam', ha='left', va='center', transform=axs[1].transAxes, color='gray', fontsize=8, alpha=1)
-
+	
 	for i, cb in enumerate([simc, obsc, resc, modc]):
-		fig.colorbar( cb, ax=axs[i], shrink=0.77, pad=0.00, label=units[i])
+		fig.colorbar( cb, ax=axs[i], shrink=0.8, pad=0.00, label=units[i])
 		if i > 0: 
 			width_frac = bmaj / modlist[i-1].shape[1] ; height_frac = bmin / modlist[i-1].shape[0]
 			beam_patch = mpl.patches.Ellipse( (0.1, 0.1), width=width_frac, height=height_frac, angle=90 + PA, 
@@ -825,8 +850,11 @@ def quadruplot( diskname, config_name, as_margin=3., rulersize=100):
 		# axs[i].axis('off')
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
+	uvax = fig.add_axes( rect=[1.1, 0.5, 1/2.4, 0.4])		# add an axes for the uvplot
+	uvax = make_uvplots( diskname, bestfit_pars, galargs, two_comp, 33e3, wle, config_name, make_modelimg=False, Axes=uvax)
+	fig.suptitle( diskname + run_name, fontweight='bold' ) 
 	# plt.show()
-	fig.savefig( f'quadplot_{diskname}' + fig_ext , bbox_inches='tight', dpi=400)
+	fig.savefig( f'pentaplot_{diskname}' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
 
@@ -849,9 +877,10 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	# bestfit = np.loadtxt('bestfit_params.txt')
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
-	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, wle=wle, config_name=config_name)
+	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, wle=wle, config_name=config_name, save_vis=True )
 	residuals_vis_plot( diskname, mod_vis, T_exp, config_name )
-	quadruplot( diskname=diskname, config_name=config_name )
+	run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
+	pentaplot( diskname, config_name, bestfit, galargs, two_comp, wle, run_name)
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
