@@ -5,14 +5,15 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 import os
 import glob
-import sys
+# import sys
 import argparse
 import pandas as pd
 # import scipy.integrate as si
 import astropy.units as u
+from astropy.io import fits
 from astropy import constants as const
 import casatools as cto
-import emcee, corner
+# import emcee, corner
 from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
@@ -69,6 +70,11 @@ def kappa_empir( v_obs, beta):
 def temp_profile_Tung( lum, r):
 	'''Average T(r) profile from Tung24 fit. lum=Lint+Lacc in [Lsun] and r in [au]. '''
 	return lum**0.25 * ( r / 35 )**(-0.52) * 71   # Kelvin
+
+def temp_profile_envs( lum, r, q=0.4):
+	'''Average T(r) profile for envelopes from Maury+2019. lum=Lint+Lacc in [Lsun] and r in [au]. '''
+	return (lum/1e5)**(q/2) * ( r / 13400 )**(-q) * 60   # Kelvin
+
 
 def disk_avg_T( lum, r):
 	'''Average T weighted over disk surface, from from Tung24 T law. lum[Lsun] and r (tot disk) in [au]. '''
@@ -169,7 +175,7 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
 	ptitle =  f'{var1.name}_{var2.name} ratio' + run_name
 	fig, ax = plt.subplots( figsize =(4,4), tight_layout=True )
 	# fig.suptitle( ptitle )
-	q16, median_r, q84 = np.quantile( ratio, [0.16, 0.5, 0.84])
+	q16, median_r, q84 = np.nanquantile( ratio, [0.16, 0.5, 0.84])
 	hh = ax.hist( x=ratio, bins='doane', color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
 	ax.axvline( x=1, ls='--', c='k', alpha=0.99)
 	ax.axvline( x=median_r, ls='-.', c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
@@ -178,7 +184,7 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
 		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
 	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=ptitle )
 	ax.legend()
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
@@ -204,7 +210,7 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name='', error
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + f'_k{k_sim :.3f}_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + f'_k{k_sim :.3f}_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 	
@@ -221,7 +227,7 @@ def thick_sim_inspo( df, k_sim, Tavg, v_obs, run_name):
 	ax.set( xlabel= r'$ R_\mathrm{obs} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.4, linestyle=':')
 	ax.legend( loc='lower right')
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + f'_k{k_sim :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + f'_k{k_sim :.3f}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 	
@@ -231,29 +237,34 @@ def plot_mass_env( df, run_name, ):
 	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
 	'''
 	M_obs = df.Meo
-	M_ratio = accuracy_ratio( M_obs, df.Mes/100 )
+	M_sim = (df.Mcyl - df.M_sim) /100	# (df.Mcyl - df.M_sim)
+	M_ratio = M_obs / M_sim 
 	# T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
 	ptitle = 'Envelope mass comparison' + run_name
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
-	ax.scatter( x=df.Mes/100, y=M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
-	ax.text( x=0.01, y=0.85, s= f'mean accuracy: {np.mean( M_ratio) :1.1f}x',
-		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
+	ax.scatter( x=M_sim, y=M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
+	# ax.text( x=0.01, y=0.85, s= f'mean accuracy: {np.nanmean( M_ratio) :1.1f}x',
+	# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
 	# ax.text( x=0.01, y=0.90, s= f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)',
 	# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=12, alpha=1.)
-	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{env, obs} $ [M$_{\odot}$]', xscale='log', yscale='log', title=ptitle )
+	ax.set( xlabel= r'$ M_\mathrm{env, sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{env, obs} $ [M$_{\odot}$]', xscale='log', yscale='log', title=ptitle )
 	ax.axis( 'square')
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
-	# fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
-	# ax.scatter( x=df.Mes/100, y=df.Fv_env, marker='*', c='r', alpha=0.7)
-	# # ax.scatter( x=df.Mes/100, y=df.LI0_env/df.LI0_env.max(), marker='*', alpha=0.7)
-	# ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'Fv_env [Jy] ', xscale='log', yscale='log' )
-	# plt.show()
+	ptitle = 'Envelope flux'
+	fig, ax = plt.subplots( )
+	fig.suptitle( ptitle )
+	ax.scatter(  x=df.Mcyl , y=df.Fv_env, alpha=0.7 )
+	[ax.text( s=df.index[i], x=df.Mcyl[i],  y=df.Fv_env[i], horizontalalignment='left', verticalalignment='bottom', fontsize=5 ) for i in range(len(df)) ]
+	ax.set(  xlabel= 'Mcyl', xscale='log', ylabel= 'F_env', yscale='log')
+	# fig.supylabel( r'$\delta_M$', fontsize=12 )
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	plt.close()
 
 
 def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
@@ -266,8 +277,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 		M_obs, M_obs_lo, M_obs_up = df.M_obs, df.M_obs_lo, df.M_obs_up
 	M_ratio = M_obs / (df.M_sim /100)	 # accuracy_ratio( M_obs, df.M_sim/100 )
 	# mean_r = max( np.nanmean( M_ratio), 1/np.nanmean( M_ratio) )		# to have the form 1.#x
-	qs = np.quantile( M_ratio, [0.16, 0.5, 0.84] )
-	# median_r = max( qs[1], 1/qs[1] )
+	qs = np.nanquantile( M_ratio, [0.16, 0.5, 0.84] )
 	T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
 	ptitle = 'Disk mass comparison' + run_name
@@ -287,7 +297,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	# ax.axis( 'square')
 	# ax.set_box_aspect(1)
 	# ax.set_aspect('equal', adjustable='box')
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
@@ -313,14 +323,14 @@ def plot_radius_compare( df, res_limit, run_name, errors=True):
 	else:
 		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.7, zorder=3.7)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
-	ax.text( x=0.01, y=0.7, s=(f'median accuracy:\n $R_{{90\%}}$: {np.median( r_ratio_90) :1.1f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
-		f'\n $R_{{95\%}}$: {np.median( r_ratio_95) :1.1f}x'),
+	ax.text( x=0.01, y=0.7, s=(f'median accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.1f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
+		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.1f}x'),
 		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
 		 title=ptitle, xlim=[0.05,2.4], ylim=[0.05, 2.4], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend()
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
@@ -331,13 +341,17 @@ def plot_inc_compare( df, run_name):
 	'''
 	Assuming inc in [deg]. 
 	'''
+	qs = np.nanquantile( df.i_obs / df.i_sim, [0.16, 0.5, 0.84] )
+
 	ptitle = 'Inclination comparison' + run_name
 	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
-	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.9, err_alpha=0.4 )
+	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.9, err_alpha=0.27 )
 	# ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
-	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', title=ptitle )
-	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	ax.text( x=0.01, y=0.85, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
+		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
+	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', aspect='equal', xlim=[0,90], ylim=[0,90], title=ptitle )
+	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf')]
 	# plt.show()
 	plt.close()
 
@@ -411,7 +425,7 @@ def plot_correlations( df, run_name='', logfit=True):
 	fig.supylabel( r'$\delta_M$', fontsize=12 )
 	# fig.subplots_adjust( wspace=0.001)
 	# llab = '_log' if logfit else ''
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 	# y = df.epsilon_M  	# mass relative error
@@ -421,7 +435,7 @@ def plot_correlations( df, run_name='', logfit=True):
 	# ax.scatter(  df.Mes / df.M_sim , y, alpha=0.7 )
 	# ax.set(  xlabel= 'Mdisk / Menv', xscale='linear')
 	# fig.supylabel( r'$\delta_M$', fontsize=12 )
-	# # [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	# # [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 
 
@@ -504,7 +518,7 @@ def env_mass_annuli( v_obs, LI0, Ri, p_idx, Rmax, kappa, Ltot):
 	r_grid = np.logspace( -10, np.log10(Rmax), 400)		# [rad]
 	dF_grid = np.diff( plummer_integral( 10**LI0, Ri, p_idx, r_grid ), axis=0 )		# annulus-integrated flux density [Jy]
 	rmid = ( r_grid[:-1] + r_grid[1:] ) / 2 * dist.to_value(u.au)	# midpoint radii [au]
-	dM = ( dist.cgs.value )**2 / kappa * dF_grid  / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=rmid ) )
+	dM = ( dist.cgs.value )**2 / kappa * dF_grid  / planck_bbody( v_obs, T=temp_profile_envs( lum=Ltot, r=rmid ) )
 	Mtot = dM.sum( axis=0) / const.M_sun.cgs.value * 1e-23		# [Msun]
 	return Mtot, dF_grid.sum( axis=0) 
 
@@ -563,17 +577,18 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 				Fv_count = count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
 				F_v_thicc = thick_flux( v_obs, dist, R_obs[0], l_star=l_star)			# theoretical fully thick disk flux
 
-				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, Rout, k_obs, l_star)
+				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, R_95, k_obs, l_star)
 
 			except: 
 				print('No bestfit params found for disk', diskID)
-				M_obs = R_obs = F_v = F_v_thicc = Fv_count = i_obs = Ri = p_idx = LI0_d = LI0_env = F_v_simple = M_obs_simple = M_env_o = Fv_env  = np.nan
+				M_obs = R_obs = F_v = i_obs = Ri = p_idx = LI0_d = LI0_env = F_v_simple = M_obs_simple = M_env_o = Fv_env = Rout = [np.nan, np.nan, np.nan]
+				F_v_thicc = Fv_count = np.nan
 			
 			finally:
 				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations (gas)
 				epsilon = (M_obs *100 - M_sim) / M_sim			# obs - truth normalised discrepancy (factor 100 dust-to-gas)
 				Menv_sim = truths_df.loc[ disk_n ]['M_env']		# [Msun] env mass from simulations (gas) within 1000 au ??
-				Mcyl = truths_df.loc[ disk_n ]['M_cyl']		# [Msun] 
+				Mcyl = truths_df.loc[ disk_n ]['M_cyl']			# [Msun] 
 				R_sim = truths_df.loc[ disk_n ]['R_disk']		# [au]
 				R_obs = (R_obs * dist).to_value( u.au )			# rad to [au]
 				Ri = (Ri * dist).to_value( u.au )				# rad to [au]
@@ -583,11 +598,11 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=T_avg) / dist.cgs.value**2  *1e23	
 
 				paramlist.append( [diskID, R_obs, R_sim, Ri, p_idx, M_obs_simple, M_obs, M_sim, epsilon, Menv_sim, Mcyl, 
-					LI0_d, LI0_env, F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin, M_env_o, Fv_env] )
+					LI0_d, LI0_env, F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin, M_env_o, Fv_env, Rout] )
 
 	res_df = pd.DataFrame( paramlist, 
 				columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'M_sim', 'epsilon_M', 'Mes', 'Mcyl',
-				'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin', 'Meo', 'Fv_env']
+				'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin', 'Meo', 'Fv_env', 'Rout']
 			).set_index('source')
 	
 	# some columns contain arrays of length 3 with uncertainties, but better to give each one an independent column of the DataFrame
@@ -595,7 +610,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 		res_df[ [col, col+'_lo',col+'_up'] ] = pd.DataFrame( res_df[col].tolist(), index=res_df.index)
 	
 	os.chdir( results_dir )
-	res_df.to_csv( f'analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
+	res_df.to_csv( f'Ri-analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
 	# res_df = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')	# to load it
 	
 	if figures:
@@ -616,6 +631,9 @@ def crop_image( img, centre=None, margins=[100, 100] ):
 	'''Select a subimage of margins pixels around the centre (odd size).'''
 	if centre is None:      	# use the middle of the image
 		centre = (np.array( img.shape)/2 ).astype(int)
+	if margins[0] > min( centre[0], img.shape[0] - centre[0]):
+		print( 'margins exceed original image boundary, no crop possible.\n')
+		return img
 	return img[ centre[0] - margins[0] : centre[0] + margins[0] +1, centre[1] - margins[1] : centre[1] + margins[1] +1]
 
 def circular_region( arr, radius, centre=None):
@@ -656,7 +674,7 @@ def plot_SNR( df, run_name ):
 	ax.axhline( y=100, color='gray', ls='-')
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.set( title=ptitle)
-	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
@@ -680,8 +698,8 @@ def assess_SNR( wle, results_dir, config_name, run_name ):
 		peak = np.max( crop_image(img, margins=[35,35]) )	# find the peak flux in a region around the centre
 		peak_beam = peak_beam_avg( img, table=table)
 
-		noise = min_bkg_rms( img )		# the minimum rms from bkg patches
-		# noise = rms( img )					# the rms of the entire image including target source
+		noise = min_bkg_rms( img )			# the minimum rms from bkg patches
+		# noise = rms( img )				# the rms of the entire image including target source
 
 		snr = peak_beam / noise
 		SNRs.append( [projectname.strip( 'disk' ), snr, peak, peak_beam, noise] )
@@ -753,7 +771,7 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 		axs[i].set( xlabel=xlabs[i], xscale='log', yscale='log')
 	axs[0].set( ylabel='M_disk')
 	llab = '_log' if logfit else ''
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + llab + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + llab + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 	return popt
 
@@ -788,16 +806,30 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 # 		bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=True )
 
 
-def visib_ratios_plot():
+
+
+
+def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=6e5):
 	'''
-	Visualise for ALL targets in our sample the ratios of the Re(V) as function of the baseline between 1,3,7mm. 
+	Visualise for ALL targets in our sample the ratios of quantity between 1,3,7mm as function of the baseline. 
 	'''
 	import uvplot as uvp
 	from scipy.interpolate import Akima1DInterpolator
-	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7, 'figure.dpi':200})
-	resdir_7mm = '/home/PERSONALE/gabriele.columba/run/results/7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = '/home/PERSONALE/gabriele.columba/run/results/3mm/run_3600s_2c_xsrc/'
-	resdir_1mm = '/home/PERSONALE/gabriele.columba/run/results/1mm/run_300s_2c_xsrc/'
+	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7, 'figure.dpi':200})	
+	def plot_quantity( quant, uvtab):
+		if quant=='Re':
+			return uvtab.bin_re
+		elif quant=='Im':
+			return uvtab.bin_re
+		elif quant=='amp':
+			return np.arctan2( uvtab.bin_im, uvtab.bin_re )
+		elif quant=='mod':
+			return np.sqrt( uvtab.bin_im**2 + uvtab.bin_re**2 )
+		
+	prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
+	resdir_7mm = prefix + '7mm/run_3600s_2c_xsrc/'
+	resdir_3mm = prefix + '3mm/run_3600s_2c_xsrc/'
+	resdir_1mm = prefix + '1mm/run_300s_2c_xsrc/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
 	ncols = 10 ; nrows = int(np.ceil( n_disks / ncols))
@@ -805,48 +837,228 @@ def visib_ratios_plot():
 	fig, axes = plt.subplots( nrows, ncols, figsize=(1.7*ncols, 2*nrows), squeeze=False, sharex=True, sharey=True)
 	axes = axes.flatten()
 
-	# uvds = r31s = r73s = []
-	for i in range( n_disks):
-		diskname = os.path.basename( disk_dirs[i] )		# "diskNN_xx"
+	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
+	for d in range( n_disks):	# n_disks
+		uvtabs = [0,0,0] ; disktabs = [0,0,0]
+		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
 		try:		# Load uvtable using uvplot
-			uvtab1 = uvp.UVTable( filename= resdir_1mm + diskname+'/uvtab.txt', wle=0.89e-3, columns=uvp.COLUMNS_V0)
-			uvtab3 = uvp.UVTable( filename= resdir_3mm + diskname+'/uvtab.txt', wle=3e-3, columns=uvp.COLUMNS_V0)
-			uvtab7 = uvp.UVTable( filename= resdir_7mm + diskname+'/uvtab.txt', wle=7e-3, columns=uvp.COLUMNS_V0)
+			for i in range(3):
+				uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname +'/uvtab.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
+				uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline)	; uvtabs[i].uvbin( binsize)
+				if model == 'env':
+					# read from new file format ?
+					disktabs[i] = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 )
+					disktabs[i] = disktabs[i].uvcut( maxuv=max_baseline)	; disktabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
+			
+			# uvtab3 = uvp.UVTable( filename= resdir_3mm + diskname+'/uvtab.txt', wle=3e-3, columns=uvp.COLUMNS_V0)
+			# uvtab7 = uvp.UVTable( filename= resdir_7mm + diskname+'/uvtab.txt', wle=7e-3, columns=uvp.COLUMNS_V0)
 		except Exception as e:
 			print(f"\nCould not load uvtable for {diskname}: {e}\n")
 			continue
 		
-		binsize = 40e3 	# [n lambda units]
-		uvtab1.uvbin( binsize) ; uvtab3.uvbin( binsize) ; uvtab7.uvbin( binsize) ; 	# bin all visibs with same relative scales
-		uvdist3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
-		re3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_re, np.nan) 			# reference REAL values to compute ratios
-		re1 = Akima1DInterpolator( uvtab1.bin_uvdist, uvtab1.bin_re)( uvdist3 )	# interpolate the real part where the ref value are binned
-		re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re)( uvdist3 )
-		re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
-		rr31 = re1 / re3
-		rr71 = re1 / re7		# the ratios, with shorter wle on top
-		rr73 = re3 / re7
-		a13 = np.log10( rr31) / np.log10( 3 / 0.89 )
-		a17 = np.log10( rr71) / np.log10( 7 / 0.89 )
-		a37 = np.log10( rr73) / np.log10( 7 / 3 )
+		# binsize = 40e3 	# [n lambda units]
+		# uvtab1.uvbin( binsize) ; uvtab3.uvbin( binsize) ; uvtab7.uvbin( binsize) ; 	# bin all visibs with same relative scales
+		# uvdist3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+		# re3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_re, np.nan) 			# reference REAL values to compute ratios
+		# re1 = Akima1DInterpolator( uvtab1.bin_uvdist, uvtab1.bin_re)( uvdist3 )	# interpolate the real part where the ref value are binned
+		# re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re)( uvdist3 )
+		# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
+		# rr31 = re1 / re3
+		# rr71 = re1 / re7		# the ratios, with shorter wle on top
+		# rr73 = re3 / re7
+		# a13 = np.log10( rr31) / np.log10( 0.89 / 3 )
+		# a17 = np.log10( rr71) / np.log10( 0.89 / 7 )
+		# a37 = np.log10( rr73) / np.log10( 3 / 7 )
+		# axes[i].plot( uvdist3 *1e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='0.9mm/7mm', alpha=0.6 )
+		# axes[i].plot( uvdist3 *1e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
+		# axes[i].plot( uvdist3 *1e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
+		# axes[i].set( xscale='log', yscale='log', ylim=[1e-1,1e3]) ; axes[i].set_title( diskname, fontsize=8)
 
-		# fig, ax = plt.subplots()
-		axes[i].plot( uvdist3 *1e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='0.9mm/7mm', alpha=0.6 )
-		axes[i].plot( uvdist3 *1e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
-		axes[i].plot( uvdist3 *1e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
-		axes[i].set( xscale='log', yscale='log', ylim=[1e-1,1e3]) ; axes[i].set_title( diskname, fontsize=8)
-		#plt.show()
-		# uv.apply_phase( -dRA, -dDec)         # center the source on the phase center ???
-		# np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
 
-	for ax in axes[n_disks:]:	# hide unused axes
-		ax.set_visible(False)
+		# # qty = np.arctan2( uvtab3.bin_im , uvtab3.bin_re )	# amplitude
+		# qty = uvtab3.bin_re  # np.sqrt( uvtab3.bin_re**2 + uvtab3.bin_im**2 )	# modulus
+		# uvdist3 = np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+		# re3 = np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
+		# re1 = Akima1DInterpolator( uvtab1.bin_uvdist, uvtab1.bin_re )( uvdist3 )	# interpolate the real part where the ref value are binned
+		# re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re )( uvdist3 )	#  np.arctan2( uvtab1.bin_im ,
+		# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
+		# rr31 = re1 / re3
+		# rr71 = re1 / re7		# the ratios, with shorter wle on top
+		# rr73 = re3 / re7
+		# a13 = - np.log10( rr31) / np.log10( 0.89 / 3 )
+		# a17 = - np.log10( rr71) / np.log10( 0.89 / 7 )		# minus sign because i'm dividing for wavel, not frequency
+		# a37 = - np.log10( rr73) / np.log10( 3 / 7 )
+
+		# fig, axes = plt.subplots()
+		# axes.plot( uvdist3 *1e-3, a17 - 2, c='tab:cyan', ls='--', lw=1.5, label='0.9mm/7mm', alpha=0.6 )
+		# axes.plot( uvdist3 *1e-3, a37-2 , c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
+		# axes.plot( uvdist3 *1e-3, a13 -2, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
+		# axes.set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; axes.set_title( diskname, fontsize=8)
+		# plt.show()
+
+		# disktabs = [0,0,0]
+		# wles = [8.9e-4, 3e-3, 7e-3]
+		# dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
+		# uvtabs = [uvtab1, uvtab3, uvtab7]
+		# for i in range( len( dirs)):
+		# 	disk_tab = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 ) # gd.sampleImage( diskmod, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')
+		# 	disk_tab.uvcut( maxuv=720000)	; disk_tab.uvbin( binsize)	# bin it before or AFTER the subtraction ?
+		# 	disktabs[i] = disk_tab
+		
+		# env_re = uvtabs[i].bin_re - disk_tab.bin_re 
+		if model == 'full':
+			q1, q3, q7 = [ plot_quantity( quantity, uvtabs[t]) for t in range(3) ]
+		elif model == 'env':
+			q1 = uvtabs[0].bin_re - disktabs[0].bin_re	# add other quantities choice
+			q3 = uvtabs[1].bin_re - disktabs[1].bin_re 	# 3mm env_re
+			q7 = uvtabs[2].bin_re - disktabs[2].bin_re
+		else: 
+			print( '\nmodel can only be ["full", "disk", "env"], input option not recognised' )
+		uvdist3 = uvtabs[1].bin_uvdist  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+		# q3 = qty # np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
+		q1 = Akima1DInterpolator( uvtabs[0].bin_uvdist, q1 )( uvdist3 )	# interpolate the real part where the ref value are binned
+		q7 = Akima1DInterpolator( uvtabs[2].bin_uvdist, q7 )( uvdist3 )	#  np.arctan2( uvtab1.bin_im ,
+		# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
+		ratio31 = q1 / q3
+		ratio73 = q3 / q7
+		a13 = - np.log10( ratio31) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
+		a37 = - np.log10( ratio73) / np.log10( 3 / 7 )
+		supylab = r'$\alpha$ index'	# 'Re(V) [Jy]'
+		
+		# fig, axes = plt.subplots()
+		axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
+		axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
+		axes[d].set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; 
+		axes[d].set_title( diskname, fontsize=8)
+		# plt.show()
+
+
+	# for ax in axes[n_disks:]:	# hide unused axes
+	# 	ax.set_visible(False)
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
-	fig.supylabel('Re(V) [Jy]', weight='bold', x=0.08, fontsize=12 )
-	fig.supxlabel('uv-distance [k$\lambda$]', weight='bold', fontsize=12 )
+	fig.supylabel( supylab, weight='bold', x=0.08, fontsize=12 )
+	fig.supxlabel('uv-distance [k$\lambda$]', fontsize=12 )		#, weight='bold'
 	axes[0].legend()
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
+	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
+	print(' Mega uv plot saved')
+
+
+def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3):
+	'''
+	Make uvplots of all regressed targets in one figure
+	'''
+	from visibfit_functions import galario_model, get_galargs
+	from galario import deg, arcsec
+	import uvplot as uvp
+	# mpl.use('macosx')
+	plt.rcParams.update({ 'font.size':7, 'legend.fontsize':7, 'figure.dpi':100})	
+
+	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
+	disk_dirs = sorted(glob.glob( results_dir + 'disk*'))
+	n_disks = len(disk_dirs)
+	ncols = 11 ; nrows = int(np.ceil( n_disks / ncols))
+	ptitle = 'Collective uvplot' + run_name
+	fig, axes = plt.subplots( nrows, ncols, figsize=(1.7*ncols, 2*nrows), squeeze=False, sharex=True, sharey=False, layout='tight')
+	fig.suptitle( ptitle, fontsize=10)
+	axes = axes.flatten()
+
+	for d in range( n_disks):	# n_disks
+		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
+		try:		# Load uvtable using uvplot
+			os.chdir( disk_dirs[d] )
+			bestfit = np.loadtxt('bestfit_params.txt')[:,0]		# only take the best values (no errors)
+			inc, PA, dRA, dDec = bestfit[-4:]
+			inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert to [rad] !
+			galargs = get_galargs( wle=wle)
+			vis_mod = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp )[2]
+			u, v, Re_obs, Im_obs, w = galargs[-5:]
+			axins = axes[d].inset_axes( [0,-0.2 , 1, 0.2] )
+			# observations uv-plot !
+			uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
+			uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
+			uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+			uv.uvbin( binsize)		# , 'zorder':1.9
+			mask = uv.bin_count != 0 # slice(None)
+			data_dict = {'fmt':'o', 'ms':3, 'color':'k', 'linewidth':0, 'capsize':1.2, 'ecolor':'gray', 'elinewidth':0.1, 'label':'Data', 'alpha':0.7}
+			axes[d].errorbar( x=uv.bin_uvdist[mask]/1000, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
+			axins.errorbar( x=uv.bin_uvdist[mask]/1000, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
+			del uv
+			# model uv-plot : disk (+ env)
+			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+			uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
+			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+			uv_mod.uvbin( binsize )
+			model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.1, 'label':'Model', 'alpha':0.95}	
+			axes[d].errorbar( uv_mod.bin_uvdist[mask]/1000, uv_mod.bin_re[mask], **model_dict)
+			axins.errorbar( uv_mod.bin_uvdist[mask]/1000, uv_mod.bin_im[mask], **model_dict)
+			del uv_mod
+
+			axes[d].set_title( diskname, fontsize=8)
+			axes[d].set( xscale='log', yscale='log') ; axins.set( xscale='log')
+			if axes[d].get_ylim()[0] < 1e-5: axes[d].set( ylim=[1e-5, axes[d].get_ylim()[1]] )		# force lower ylim at 1e-5
+			axes[d].tick_params(axis='both', left=True, top=False, right=False, bottom=False, labelleft=True, labeltop=False, labelright=False, labelbottom=False)
+			axins.tick_params(axis='both', left=False, top=False, right=False, bottom=True, labelleft=False, labeltop=False, labelright=False, labelbottom=True)
+
+		except Exception as e:
+			print(f"\nCould not do for {diskname}: {e}\n")
+			continue
+
+	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
+	# fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
+	supylab = 'Re(V)'
+	fig.supylabel( supylab, x=0.0, fontsize=10 )
+	fig.supxlabel('uv-distance [k$\lambda$]', fontsize=10 )		#, weight='bold'
+	axes[0].legend()
+	fig.savefig( results_dir + ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
+	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	# plt.show()
+	plt.close()
+	print('Collective uvplot saved')
+
+
+def collective_residuals_plot( results_dir, run_name):
+	'''
+	Make uvplots of all regressed targets in one figure
+	'''
+	plt.rcParams.update({ 'font.size':7, 'legend.fontsize':7, 'figure.dpi':200})	
+
+	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
+	pixcut_m = int( as_margin / pixscale_m )		# margin in pixel
+	for i in range(len(modlist)):
+		modlist[i] = crop_image( modlist[i], margins=[ pixcut_m, pixcut_m])
+	disk_dirs = sorted(glob.glob( results_dir + 'disk*'))
+	n_disks = len(disk_dirs)
+	ncols = 11 ; nrows = int(np.ceil( n_disks / ncols))
+
+	ptitle = 'Normalised residuals' + run_name
+	fig, axes = plt.subplots( nrows, ncols, figsize=(1.7*ncols, 2*nrows), squeeze=False, sharex=False, sharey=False, layout='tight')
+	fig.suptitle( ptitle, fontsize=10)
+	axes = axes.flatten()
+
+	for d in range( 12):	# n_disks
+		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
+		try:		# Load normalised residuals
+			os.chdir( disk_dirs[d] )
+			res_img = np.load( './bestmod/best_residuals.npy')
+			cb = axes[d].imshow( res_img, origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) ) 
+			axes[d].set_title( diskname, fontsize=8)
+			axes[d].axis( 'off' )
+			fig.colorbar( cb, ax=axes[d], label='RMS units') 	# shrink=0.8, pad=0.00,
+
+		except Exception as e:
+			print(f"\nCould not do for {diskname}: {e}\n")
+			continue
+
+	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
+
+	fig.savefig( results_dir + ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
+	# plt.show()
+	plt.close()
+	print('Collective residuals saved')
+
+
 
 
 
@@ -857,12 +1069,13 @@ if __name__=='__main__':
 	parser.add_argument('-config', type=str, help='ALMA antenna configuration (default: 11.7)')
 	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
+	parser.add_argument('-fullsamp', action='store_true', help='analyse all OK targets (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	parser.add_argument('-Tavg', type=int, default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
 	# parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
 	args = vars( parser.parse_args() )
 
-	model_comps = '2c' if args['2c'] else 'g+'
+	model_comps = '2c' if args['2c'] else '1c'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
 	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
@@ -874,22 +1087,23 @@ if __name__=='__main__':
 	#for t in [150, 200, 350]: #np.logspace( 2, 2.7, 5):
 	#	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
 
-	assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
-	Rdf = main_analysis( prettylist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
+	# assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	analist = OKlist if args["fullsamp"] else prettylist
+	rdf = main_analysis( prettylist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( Rdf, run_name=run_suffix )
 
 
-# Texp = 3600
-# model_comps = '2c'
-# xsrc_flag = 'xsrc'
-# wle = 0.003
-# folder_wle = f'{round(wle*1e3)}mm/'
-# # savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
-# run_name = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
-# config_name = 'alma.cycle11.7' 
-# # diskname = 'disk65_xy'
+Texp = 3600
+model_comps = '2c'
+xsrc_flag = 'xsrc'
+wle = 0.003
+folder_wle = f'{round(wle*1e3)}mm/'
+savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
+run_name = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
+config_name = 'alma.cycle11.7' 
+diskname = 'disk53_xz'
 
 # # # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
 # Rdf = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')
@@ -897,12 +1111,43 @@ if __name__=='__main__':
 
 
 
-# y = df.epsilon_M  	# mass relative error
-# ptitle = 'Mass error correlations_alt'
-# fig, ax = plt.subplots( tight_layout=True )
+
+# ptitle = 'Mass env'
+# fig, ax = plt.subplots( )
 # fig.suptitle( ptitle )
-# ax.scatter(  df.Mes / df.M_sim , y, alpha=0.7 )
-# ax.set(  xlabel= 'Mdisk / Menv', xscale='linear')
-# fig.supylabel( r'$\delta_M$', fontsize=12 )
-# [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+# ax.scatter(  rdf.Mcyl , rdf.Fv_env, alpha=0.7 )
+# [ax.text( s=rdf.index[i], x=rdf.Mcyl[i],  y=rdf.Fv_env[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
+# ax.set(  xlabel= ' Menv', xscale='log', ylabel= ' Fv_env', yscale='log')
+# # fig.supylabel( r'$\delta_M$', fontsize=12 )
+# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+# plt.show()
+
+# fig, ax = plt.subplots( )
+# fig.suptitle( ptitle )
+# ax.scatter(  rdf.M_sim , rdf.Fv_env, alpha=0.7 )
+# [ax.text( s=rdf.index[i], x=rdf.M_sim[i],  y=rdf.Fv_env[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
+# ax.set(  xlabel= ' Menv', xscale='log', ylabel= ' Fv_env', yscale='log')
+# # fig.supylabel( r'$\delta_M$', fontsize=12 )
+# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+# plt.show()
+
+# M_envsim = rdf.Mcyl - rdf.M_sim		# non grandché
+
+# fig, ax = plt.subplots( )
+# fig.suptitle( ptitle )
+# ax.scatter(  M_envsim , rdf.Fv_env, alpha=0.7 )
+# [ax.text( s=rdf.index[i], x=M_envsim[i],  y=rdf.Fv_env[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
+# ax.set(  xlabel= ' Menv', xscale='log', ylabel= ' Fv_env', yscale='log')
+# # fig.supylabel( r'$\delta_M$', fontsize=12 )
+# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+# plt.show()
+
+
+# fig, ax = plt.subplots( )
+# fig.suptitle( ptitle )
+# ax.scatter(  M_envsim , rdf.Meo, alpha=0.7 )
+# [ax.text( s=rdf.index[i], x=M_envsim[i],  y=rdf.Meo[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
+# ax.set(  xlabel= ' Menv', xscale='log', ylabel= 'M_env_obs', yscale='log')
+# # fig.supylabel( r'$\delta_M$', fontsize=12 )
+# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 # plt.show()
