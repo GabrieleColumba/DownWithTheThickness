@@ -833,22 +833,26 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=6
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
 	ncols = 10 ; nrows = int(np.ceil( n_disks / ncols))
-	ptitle = 'Ratios of Re(V)'
+	ptitle = f'Ratios of {quantity}(V) - {model} model'
 	fig, axes = plt.subplots( nrows, ncols, figsize=(1.7*ncols, 2*nrows), squeeze=False, sharex=True, sharey=True)
 	axes = axes.flatten()
 
 	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
 	for d in range( n_disks):	# n_disks
-		uvtabs = [0,0,0] ; disktabs = [0,0,0]
+		uvtabs = [0,0,0] ; comptabs = [0,0,0]
 		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
 		try:		# Load uvtable using uvplot
 			for i in range(3):
 				uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname +'/uvtab.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
 				uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline)	; uvtabs[i].uvbin( binsize)
-				if model == 'env':
-					# read from new file format ?
-					disktabs[i] = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 )
-					disktabs[i] = disktabs[i].uvcut( maxuv=max_baseline)	; disktabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
+				if model != 'full':
+					mod_vis = [0,0]
+					with open( 'visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
+						mod_vis = [np.load( f), np.load( f)] 			# disk_vis, env_vis
+					mod_i = 0 if model == 'env' else 1
+					comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].w], wle=wles[i], columns=uvp.COLUMNS_V0 )
+					# disktabs[i] = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 )
+					comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline)	; comptabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
 			
 			# uvtab3 = uvp.UVTable( filename= resdir_3mm + diskname+'/uvtab.txt', wle=3e-3, columns=uvp.COLUMNS_V0)
 			# uvtab7 = uvp.UVTable( filename= resdir_7mm + diskname+'/uvtab.txt', wle=7e-3, columns=uvp.COLUMNS_V0)
@@ -908,12 +912,12 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=6
 		# env_re = uvtabs[i].bin_re - disk_tab.bin_re 
 		if model == 'full':
 			q1, q3, q7 = [ plot_quantity( quantity, uvtabs[t]) for t in range(3) ]
-		elif model == 'env':
-			q1 = uvtabs[0].bin_re - disktabs[0].bin_re	# add other quantities choice
-			q3 = uvtabs[1].bin_re - disktabs[1].bin_re 	# 3mm env_re
-			q7 = uvtabs[2].bin_re - disktabs[2].bin_re
-		else: 
-			print( '\nmodel can only be ["full", "disk", "env"], input option not recognised' )
+		else: # model == 'env':
+			q1 = uvtabs[0].bin_re - comptabs[0].bin_re	# add other quantities choice
+			q3 = uvtabs[1].bin_re - comptabs[1].bin_re 	# 3mm env_re
+			q7 = uvtabs[2].bin_re - comptabs[2].bin_re
+		# else: 
+		# 	print( '\nmodel can only be ["full", "disk", "env"], input option not recognised' )
 		uvdist3 = uvtabs[1].bin_uvdist  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
 		# q3 = qty # np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
 		q1 = Akima1DInterpolator( uvtabs[0].bin_uvdist, q1 )( uvdist3 )	# interpolate the real part where the ref value are binned
