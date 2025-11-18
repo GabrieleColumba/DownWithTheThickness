@@ -178,9 +178,10 @@ def copy_extra_sources( diskname, nRMS, config_name='', deconvmod=True ):
 			diag_img = snd.gaussian_filter( nimg_masked, sigma=smooth_r )
 			diag_img[ noisy_img < thresh ] = np.nan	; diag_img[ label_image == target_idx ] = np.nan		# just for visualisation
 		else:
-			diag_img = np.where( noisy_img > thresh, xsrc_img, np.nan)
+			diag_img = np.where( noisy_img > thresh, xsrc_img, np.nan)		# use noisy_img just for diagnostic plot
 			diag_img[ label_image == target_idx ] = np.nan
-		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )	# use noisy_img just for diagnostic plot
+		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )
+		ax.imshow( np.where(label_image==target_idx, 1, np.nan), origin='lower', cmap='bwr_r')			# mark the target position
 		ax.set_axis_off()
 		fig.savefig( 'sky_xsrc_map' + fig_ext, bbox_inches='tight', dpi=300)
 		plt.close()
@@ -738,7 +739,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 	
 	# ptitle = 'Uvplot' + run_name
 	if Axes == None: 
-		fig, ax = plt.subplots( 1,1, figsize=(4,4), layout='tight')	
+		fig, ax = plt.subplots( 1,1, figsize=(3.5,4), layout='tight')	
 	else: 
 		ax = Axes
 	axins = ax.inset_axes( [0,-0.27 , 1, 0.25] )			# create an inset for the imaginary part
@@ -771,10 +772,9 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 			colors, labs = ['tab:blue', 'tab:green'], ['disk','envelope']
 			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')	
 			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
-			if save_vis: np.save( 'visib_disk+env', arr=comp_vis )	
-			# if i==0: 				# save visibilities of disk component for later subtraction from data
-				# np.savetxt( 'uvtab_disk.txt', np.column_stack([uv_mod.u*wle, uv_mod.v*wle, uv_mod.V.real, uv_mod.V.imag, uv_mod.weights]), fmt='%10.6e',
-				# 	delimiter='\t', header=f'wavelength[m] = {wle :.5f}\nColumns:	u[m]	v[m]	Re(V)[Jy]	Im(V)[Jy]	weight')
+			if save_vis: 	
+				with open('visib_disk+env.npy', 'ab') as f:		# this requires two separate np.load calls to read back the arrays
+					np.save( f, arr=comp_vis )
 			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
 			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 			uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
@@ -850,11 +850,11 @@ def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_
 		# axs[i].axis('off')
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
-	uvax = fig.add_axes( rect=[1.1, 0.5, 1/2.4, 0.4])		# add an axes for the uvplot
+	uvax = fig.add_axes( rect=[1.1, 0., 1/2.8, 0.35])		# add an axes for the uvplot
 	uvax = make_uvplots( diskname, bestfit_pars, galargs, two_comp, 33e3, wle, config_name, make_modelimg=False, Axes=uvax)
-	fig.suptitle( diskname + run_name, fontweight='bold' ) 
+	fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
-	fig.savefig( f'pentaplot_{diskname}' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
+	fig.savefig( f'pentaplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
 
@@ -877,6 +877,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	# bestfit = np.loadtxt('bestfit_params.txt')
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
+	#copy_extra_sources( diskname, nRMS, config_name)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, wle=wle, config_name=config_name, save_vis=True )
 	residuals_vis_plot( diskname, mod_vis, T_exp, config_name )
 	run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
