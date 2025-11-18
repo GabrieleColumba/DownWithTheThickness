@@ -19,6 +19,7 @@ from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 from local_variables import *
+from visibfit_functions import crop_image
 plt.rcParams.update({ 'font.size':10, 'legend.fontsize':8, 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24, wb 43 ?? not shown
@@ -627,14 +628,14 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 
 
 
-def crop_image( img, centre=None, margins=[100, 100] ):
-	'''Select a subimage of margins pixels around the centre (odd size).'''
-	if centre is None:      	# use the middle of the image
-		centre = (np.array( img.shape)/2 ).astype(int)
-	if margins[0] > min( centre[0], img.shape[0] - centre[0]):
-		print( 'margins exceed original image boundary, no crop possible.\n')
-		return img
-	return img[ centre[0] - margins[0] : centre[0] + margins[0] +1, centre[1] - margins[1] : centre[1] + margins[1] +1]
+# def crop_image( img, centre=None, margins=[100, 100] ):
+# 	'''Select a subimage of margins pixels around the centre (odd size).'''
+# 	if centre is None:      	# use the middle of the image
+# 		centre = (np.array( img.shape)/2 ).astype(int)
+# 	if margins[0] > min( centre[0], img.shape[0] - centre[0]):
+# 		print( 'margins exceed original image boundary, no crop possible.\n')
+# 		return img
+# 	return img[ centre[0] - margins[0] : centre[0] + margins[0] +1, centre[1] - margins[1] : centre[1] + margins[1] +1]
 
 def circular_region( arr, radius, centre=None):
 	'''
@@ -808,14 +809,16 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 
 
 
-
-def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=6e5):
+def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5e5, targetslist=OKlist):
 	'''
 	Visualise for ALL targets in our sample the ratios of quantity between 1,3,7mm as function of the baseline. 
 	'''
 	import uvplot as uvp
+	# mpl.use('macosx')
 	from scipy.interpolate import Akima1DInterpolator
-	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7, 'figure.dpi':200})	
+	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7, 'figure.dpi':100})	
+	mpl.style.use('fast')
+
 	def plot_quantity( quant, uvtab):
 		if quant=='Re':
 			return uvtab.bin_re
@@ -826,119 +829,69 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=6
 		elif quant=='mod':
 			return np.sqrt( uvtab.bin_im**2 + uvtab.bin_re**2 )
 		
-	prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
-	resdir_7mm = prefix + '7mm/run_3600s_2c_xsrc/'
-	resdir_3mm = prefix + '3mm/run_3600s_2c_xsrc/'
-	resdir_1mm = prefix + '1mm/run_300s_2c_xsrc/'
+	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
+	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
+	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc/'
+	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
 	ncols = 10 ; nrows = int(np.ceil( n_disks / ncols))
 	ptitle = f'Ratios of {quantity}(V) - {model} model'
-	fig, axes = plt.subplots( nrows, ncols, figsize=(1.7*ncols, 2*nrows), squeeze=False, sharex=True, sharey=True)
+	fig, axes = plt.subplots( nrows, ncols, figsize=(2*ncols, 2.35*nrows), squeeze=False, sharex=True, sharey='row')
 	axes = axes.flatten()
 
 	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
 	for d in range( n_disks):	# n_disks
 		uvtabs = [0,0,0] ; comptabs = [0,0,0]
-		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
-		try:		# Load uvtable using uvplot
-			for i in range(3):
-				uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname +'/uvtab.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
-				uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline)	; uvtabs[i].uvbin( binsize)
-				if model != 'full':
-					mod_vis = [0,0]
-					with open( 'visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
-						mod_vis = [np.load( f), np.load( f)] 			# disk_vis, env_vis
-					mod_i = 0 if model == 'env' else 1
-					comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].w], wle=wles[i], columns=uvp.COLUMNS_V0 )
-					# disktabs[i] = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 )
-					comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline)	; comptabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
+		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"	
+		if int( diskname[4:6]) in targetslist:
+			try:		# Load uvtable using uvplot
+				for i in range(3):
+					uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname +'/uvtab.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
+					if model != 'full':
+						mod_vis = [0,0]
+						with open( dirs[i] + diskname + '/visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
+							mod_vis = [np.load( f), np.load( f)] 			# disk_vis, env_vis
+						mod_i = 0 if model == 'env' else 1
+						comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
+						# disktabs[i] = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 )
+						comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline)	; comptabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
+						del mod_vis
+					uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline)	; uvtabs[i].uvbin( binsize)
+			except Exception as e:
+				print(f"\nCould not load uvtable for {diskname}: {e}\n")
+				continue
 			
-			# uvtab3 = uvp.UVTable( filename= resdir_3mm + diskname+'/uvtab.txt', wle=3e-3, columns=uvp.COLUMNS_V0)
-			# uvtab7 = uvp.UVTable( filename= resdir_7mm + diskname+'/uvtab.txt', wle=7e-3, columns=uvp.COLUMNS_V0)
-		except Exception as e:
-			print(f"\nCould not load uvtable for {diskname}: {e}\n")
-			continue
-		
-		# binsize = 40e3 	# [n lambda units]
-		# uvtab1.uvbin( binsize) ; uvtab3.uvbin( binsize) ; uvtab7.uvbin( binsize) ; 	# bin all visibs with same relative scales
-		# uvdist3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
-		# re3 = np.where( uvtab3.bin_re > 0 , uvtab3.bin_re, np.nan) 			# reference REAL values to compute ratios
-		# re1 = Akima1DInterpolator( uvtab1.bin_uvdist, uvtab1.bin_re)( uvdist3 )	# interpolate the real part where the ref value are binned
-		# re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re)( uvdist3 )
-		# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
-		# rr31 = re1 / re3
-		# rr71 = re1 / re7		# the ratios, with shorter wle on top
-		# rr73 = re3 / re7
-		# a13 = np.log10( rr31) / np.log10( 0.89 / 3 )
-		# a17 = np.log10( rr71) / np.log10( 0.89 / 7 )
-		# a37 = np.log10( rr73) / np.log10( 3 / 7 )
-		# axes[i].plot( uvdist3 *1e-3, rr71, c='tab:cyan', ls='--', lw=1.5, label='0.9mm/7mm', alpha=0.6 )
-		# axes[i].plot( uvdist3 *1e-3, rr73, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
-		# axes[i].plot( uvdist3 *1e-3, rr31, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
-		# axes[i].set( xscale='log', yscale='log', ylim=[1e-1,1e3]) ; axes[i].set_title( diskname, fontsize=8)
+			if model == 'full':
+				q1, q3, q7 = [ plot_quantity( quantity, uvtabs[t]) for t in range(3) ]
+			else: # model == 'env':
+				q1 = uvtabs[0].bin_re - comptabs[0].bin_re	# add other quantities choice
+				q3 = uvtabs[1].bin_re - comptabs[1].bin_re 	# 3mm env_re
+				q7 = uvtabs[2].bin_re - comptabs[2].bin_re
+			# else: 
+			# 	print( '\nmodel can only be ["full", "disk", "env"], input option not recognised' )
+			uvdist3 = uvtabs[1].bin_uvdist  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+			# q3 = qty # np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
+			q1 = Akima1DInterpolator( uvtabs[0].bin_uvdist, q1 )( uvdist3 )	# interpolate the real part where the ref value are binned
+			q7 = Akima1DInterpolator( uvtabs[2].bin_uvdist, q7 )( uvdist3 )	#  np.arctan2( uvtab1.bin_im ,
+			# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
+			ratio31 = q1 / q3
+			ratio73 = q3 / q7
+			a13 = - np.log10( ratio31) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
+			a37 = - np.log10( ratio73) / np.log10( 3 / 7 )
 
+			# fig, axes = plt.subplots()
+			axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
+			axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
+			axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
+			axes[d].set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; 
+			axes[d].set_title( diskname, fontsize=8)
 
-		# # qty = np.arctan2( uvtab3.bin_im , uvtab3.bin_re )	# amplitude
-		# qty = uvtab3.bin_re  # np.sqrt( uvtab3.bin_re**2 + uvtab3.bin_im**2 )	# modulus
-		# uvdist3 = np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
-		# re3 = np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
-		# re1 = Akima1DInterpolator( uvtab1.bin_uvdist, uvtab1.bin_re )( uvdist3 )	# interpolate the real part where the ref value are binned
-		# re7 = Akima1DInterpolator( uvtab7.bin_uvdist, uvtab7.bin_re )( uvdist3 )	#  np.arctan2( uvtab1.bin_im ,
-		# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
-		# rr31 = re1 / re3
-		# rr71 = re1 / re7		# the ratios, with shorter wle on top
-		# rr73 = re3 / re7
-		# a13 = - np.log10( rr31) / np.log10( 0.89 / 3 )
-		# a17 = - np.log10( rr71) / np.log10( 0.89 / 7 )		# minus sign because i'm dividing for wavel, not frequency
-		# a37 = - np.log10( rr73) / np.log10( 3 / 7 )
+			del uvtabs, comptabs, q1, q3, q7
+			# plt.show()
 
-		# fig, axes = plt.subplots()
-		# axes.plot( uvdist3 *1e-3, a17 - 2, c='tab:cyan', ls='--', lw=1.5, label='0.9mm/7mm', alpha=0.6 )
-		# axes.plot( uvdist3 *1e-3, a37-2 , c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
-		# axes.plot( uvdist3 *1e-3, a13 -2, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
-		# axes.set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; axes.set_title( diskname, fontsize=8)
-		# plt.show()
-
-		# disktabs = [0,0,0]
-		# wles = [8.9e-4, 3e-3, 7e-3]
-		# dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
-		# uvtabs = [uvtab1, uvtab3, uvtab7]
-		# for i in range( len( dirs)):
-		# 	disk_tab = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 ) # gd.sampleImage( diskmod, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')
-		# 	disk_tab.uvcut( maxuv=720000)	; disk_tab.uvbin( binsize)	# bin it before or AFTER the subtraction ?
-		# 	disktabs[i] = disk_tab
-		
-		# env_re = uvtabs[i].bin_re - disk_tab.bin_re 
-		if model == 'full':
-			q1, q3, q7 = [ plot_quantity( quantity, uvtabs[t]) for t in range(3) ]
-		else: # model == 'env':
-			q1 = uvtabs[0].bin_re - comptabs[0].bin_re	# add other quantities choice
-			q3 = uvtabs[1].bin_re - comptabs[1].bin_re 	# 3mm env_re
-			q7 = uvtabs[2].bin_re - comptabs[2].bin_re
-		# else: 
-		# 	print( '\nmodel can only be ["full", "disk", "env"], input option not recognised' )
-		uvdist3 = uvtabs[1].bin_uvdist  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
-		# q3 = qty # np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
-		q1 = Akima1DInterpolator( uvtabs[0].bin_uvdist, q1 )( uvdist3 )	# interpolate the real part where the ref value are binned
-		q7 = Akima1DInterpolator( uvtabs[2].bin_uvdist, q7 )( uvdist3 )	#  np.arctan2( uvtab1.bin_im ,
-		# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
-		ratio31 = q1 / q3
-		ratio73 = q3 / q7
-		a13 = - np.log10( ratio31) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
-		a37 = - np.log10( ratio73) / np.log10( 3 / 7 )
-		supylab = r'$\alpha$ index'	# 'Re(V) [Jy]'
-		
-		# fig, axes = plt.subplots()
-		axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
-		axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
-		axes[d].set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; 
-		axes[d].set_title( diskname, fontsize=8)
-		# plt.show()
-
-
-	# for ax in axes[n_disks:]:	# hide unused axes
-	# 	ax.set_visible(False)
+	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
+	supylab = r'$\alpha$ index'	# 'Re(V) [Jy]'
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
 	fig.supylabel( supylab, weight='bold', x=0.08, fontsize=12 )
 	fig.supxlabel('uv-distance [k$\lambda$]', fontsize=12 )		#, weight='bold'
@@ -949,7 +902,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=6
 	print(' Mega uv plot saved')
 
 
-def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3):
+def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targetslist=OKlist):
 	'''
 	Make uvplots of all regressed targets in one figure
 	'''
@@ -957,9 +910,9 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3):
 	from galario import deg, arcsec
 	import uvplot as uvp
 	# mpl.use('macosx')
-	plt.rcParams.update({ 'font.size':7, 'legend.fontsize':7, 'figure.dpi':100})	
+	plt.rcParams.update({ 'font.size':7, 'legend.fontsize':6, 'figure.dpi':100})	
+	mpl.style.use('fast')
 
-	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
 	disk_dirs = sorted(glob.glob( results_dir + 'disk*'))
 	n_disks = len(disk_dirs)
 	ncols = 11 ; nrows = int(np.ceil( n_disks / ncols))
@@ -970,44 +923,64 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3):
 
 	for d in range( n_disks):	# n_disks
 		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
-		try:		# Load uvtable using uvplot
-			os.chdir( disk_dirs[d] )
-			bestfit = np.loadtxt('bestfit_params.txt')[:,0]		# only take the best values (no errors)
-			inc, PA, dRA, dDec = bestfit[-4:]
-			inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert to [rad] !
-			galargs = get_galargs( wle=wle)
-			vis_mod = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp )[2]
-			u, v, Re_obs, Im_obs, w = galargs[-5:]
-			axins = axes[d].inset_axes( [0,-0.2 , 1, 0.2] )
-			# observations uv-plot !
-			uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
-			uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
-			uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-			uv.uvbin( binsize)		# , 'zorder':1.9
-			mask = uv.bin_count != 0 # slice(None)
-			data_dict = {'fmt':'o', 'ms':3, 'color':'k', 'linewidth':0, 'capsize':1.2, 'ecolor':'gray', 'elinewidth':0.1, 'label':'Data', 'alpha':0.7}
-			axes[d].errorbar( x=uv.bin_uvdist[mask]/1000, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
-			axins.errorbar( x=uv.bin_uvdist[mask]/1000, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
-			del uv
-			# model uv-plot : disk (+ env)
-			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
-			uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
-			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-			uv_mod.uvbin( binsize )
-			model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.1, 'label':'Model', 'alpha':0.95}	
-			axes[d].errorbar( uv_mod.bin_uvdist[mask]/1000, uv_mod.bin_re[mask], **model_dict)
-			axins.errorbar( uv_mod.bin_uvdist[mask]/1000, uv_mod.bin_im[mask], **model_dict)
-			del uv_mod
+		if int( diskname[4:6]) in targetslist:
+			try:		# Load uvtable using uvplot
+				os.chdir( disk_dirs[d] )
+				bestfit = np.loadtxt('bestfit_params.txt')[:,0]		# only take the best values (no errors)
+				inc, PA, dRA, dDec = bestfit[-4:]
+				inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert to [rad] !
+				galargs = get_galargs( wle=wle)
+				vis_mod = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp )[2]
+				u, v, Re_obs, Im_obs, w = galargs[-5:]
+				axins = axes[d].inset_axes( [0,-0.2 , 1, 0.2] )
+				# observations uv-plot !
+				uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
+				uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
+				uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+				uv.uvbin( binsize)		# , 'zorder':1.9
+				mask = uv.bin_count != 0 # slice(None)
+				uvdist = uv.bin_uvdist[mask]/1000
+				data_dict = {'fmt':'o', 'ms':3, 'color':'k', 'linewidth':0, 'capsize':1.2, 'capthick':1, 'ecolor':'gray', 'elinewidth':0.1, 'label':'Data', 'alpha':0.7}
+				axes[d].errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
+				axins.errorbar( x=uvdist, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
+				del uv
+				# model uv-plot : disk (+ env)
+				uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+				uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
+				uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+				uv_mod.uvbin( binsize )
+				# uvdist = uv_mod.bin_uvdist[mask]/1000		# should be the same as for obs
+				model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.3, 'label':'Model', 'alpha':1}	
+				axes[d].errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
+				axins.errorbar( uvdist, uv_mod.bin_im[mask], **model_dict)
+				del uv_mod
 
-			axes[d].set_title( diskname, fontsize=8)
-			axes[d].set( xscale='log', yscale='log') ; axins.set( xscale='log')
-			if axes[d].get_ylim()[0] < 1e-5: axes[d].set( ylim=[1e-5, axes[d].get_ylim()[1]] )		# force lower ylim at 1e-5
-			axes[d].tick_params(axis='both', left=True, top=False, right=False, bottom=False, labelleft=True, labeltop=False, labelright=False, labelbottom=False)
-			axins.tick_params(axis='both', left=False, top=False, right=False, bottom=True, labelleft=False, labeltop=False, labelright=False, labelbottom=True)
+				if two_comp:
+					colors, labs, lss = ['g', 'b'], ['disk','envelope'], ['--', ':']
+					with open( disk_dirs[d] + '/visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
+						mod_vis = [np.load( f), np.load( f)] 		# disk_vis, env_vis
+					for i in range( len( mod_vis)):				# separately plot disk and envelope contributions
+						uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, mod_vis[i].real, mod_vis[i].imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+						uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
+						uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+						uv_mod.uvbin( binsize ) #; mask = slice(None) #uv_mod.bin_count != 0
+						# uvdist = uv_mod.bin_uvdist[mask] / 1000 
+						comp_dict = { 'ls':lss[i], 'color':colors[i], 'lw':1.2, 'label':labs[i], 'alpha':0.95}
+						axes[d].errorbar( uvdist, uv_mod.bin_re[mask],  **comp_dict)
+						axins.errorbar( uvdist, uv_mod.bin_im[mask], **comp_dict)
+					del uv_mod, uvdist
 
-		except Exception as e:
-			print(f"\nCould not do for {diskname}: {e}\n")
-			continue
+				axes[d].set_title( diskname, fontsize=8)
+				axes[d].set( xscale='log', yscale='log') ; axins.set( xscale='log')
+				if axes[d].get_ylim()[0] < 1e-4: axes[d].set( ylim=[1e-4, axes[d].get_ylim()[1]] )		# force lower ylim at 1e-5
+				axes[d].tick_params(axis='both', left=True, top=False, right=False, bottom=False, labelleft=True, labeltop=False, labelright=False, labelbottom=False)
+				axins.tick_params(axis='both', left=False, top=False, right=False, bottom=True, labelleft=False, labeltop=False, labelright=False, labelbottom=True)
+
+			except Exception as e:
+				print(f"\nCould not do for {diskname}: {e}\n")
+				continue
+		else:
+			axes[d].set_visible(False)
 
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
 	# fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
@@ -1022,45 +995,51 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3):
 	print('Collective uvplot saved')
 
 
-def collective_residuals_plot( results_dir, run_name):
+def collective_residuals_plot( results_dir, run_name, as_margin=2, targetslist=OKlist):
 	'''
 	Make uvplots of all regressed targets in one figure
 	'''
-	plt.rcParams.update({ 'font.size':7, 'legend.fontsize':7, 'figure.dpi':200})	
+	plt.rcParams.update({ 'font.size':7, 'legend.fontsize':7, 'figure.dpi':200})
+	mpl.style.use('fast')
 
-	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
-	pixcut_m = int( as_margin / pixscale_m )		# margin in pixel
-	for i in range(len(modlist)):
-		modlist[i] = crop_image( modlist[i], margins=[ pixcut_m, pixcut_m])
 	disk_dirs = sorted(glob.glob( results_dir + 'disk*'))
 	n_disks = len(disk_dirs)
 	ncols = 11 ; nrows = int(np.ceil( n_disks / ncols))
+	casa_table = cto.table()
+	casa_table.open( disk_dirs[1] + '/bestmod/residuals.image' )		# just read once, it's the same for given run
+	pixscale = abs( casa_table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
+	pixcut_m = int( as_margin / np.rad2deg(pixscale) / 3600 )			# margin in pixel
 
 	ptitle = 'Normalised residuals' + run_name
-	fig, axes = plt.subplots( nrows, ncols, figsize=(1.7*ncols, 2*nrows), squeeze=False, sharex=False, sharey=False, layout='tight')
+	fig, axes = plt.subplots( nrows, ncols, figsize=(2*ncols, 2*nrows), layout='constrained')
 	fig.suptitle( ptitle, fontsize=10)
 	axes = axes.flatten()
 
-	for d in range( 12):	# n_disks
+	for d in range( n_disks):	# n_disks
 		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
-		try:		# Load normalised residuals
-			os.chdir( disk_dirs[d] )
-			res_img = np.load( './bestmod/best_residuals.npy')
-			cb = axes[d].imshow( res_img, origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0) ) 
-			axes[d].set_title( diskname, fontsize=8)
-			axes[d].axis( 'off' )
-			fig.colorbar( cb, ax=axes[d], label='RMS units') 	# shrink=0.8, pad=0.00,
+		if int( diskname[4:6]) in targetslist:
+			print( 'reading residuals of ', diskname)
+			try:
+				# os.chdir( disk_dirs[d] )
+				res_img = np.load( disk_dirs[d] + '/bestmod/best_residuals.npy')		# Load normalised residuals
+				res_crop = crop_image( res_img, margins=[ pixcut_m, pixcut_m] )
+				cb = axes[d].imshow( res_crop.T, origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0), aspect='equal', interpolation=None ) 
+				axes[d].set_title( diskname, fontsize=9)
+				axes[d].axis( 'off' )
+				fig.colorbar( cb, cax= axes[d].inset_axes( [1,0 , 0.07, 1] ), ax=axes[d] ) 	# shrink=0.8, pad=0.00,
 
-		except Exception as e:
-			print(f"\nCould not do for {diskname}: {e}\n")
-			continue
-
+			except Exception as e:
+				print(f"\nCould not do for {diskname}: {e}\n")
+				continue
+		else:
+			axes[d].set_visible(False)
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
 
 	fig.savefig( results_dir + ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	# plt.show()
 	plt.close()
 	print('Collective residuals saved')
+
 
 
 
@@ -1088,33 +1067,29 @@ if __name__=='__main__':
 	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
-	#for t in [150, 200, 350]: #np.logspace( 2, 2.7, 5):
-	#	main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=t, figures=True )
-
 	# assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
 	rdf = main_analysis( prettylist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( Rdf, run_name=run_suffix )
+	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
+	visib_ratios_plot( model='full', quantity='mod')
+	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 
 
-Texp = 3600
-model_comps = '2c'
-xsrc_flag = 'xsrc'
-wle = 0.003
-folder_wle = f'{round(wle*1e3)}mm/'
-savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
-run_name = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
-config_name = 'alma.cycle11.7' 
-diskname = 'disk53_xz'
+# Texp = 3600
+# model_comps = '2c'
+# xsrc_flag = 'xsrc'
+# wle = 0.003
+# folder_wle = f'{round(wle*1e3)}mm/'
+# savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
+# run_name = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
+# config_name = 'alma.cycle11.7' 
+# diskname = 'disk53_xz'
 
-# # # df = main_analysis( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=150, figures=True )
-# Rdf = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')
-# # plot_correlations( Rdf, run_name )
-
-
-
+# rdf = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')
+# # plot_correlations( rdf, run_name )
 
 # ptitle = 'Mass env'
 # fig, ax = plt.subplots( )
@@ -1145,7 +1120,6 @@ diskname = 'disk53_xz'
 # # fig.supylabel( r'$\delta_M$', fontsize=12 )
 # # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 # plt.show()
-
 
 # fig, ax = plt.subplots( )
 # fig.suptitle( ptitle )
