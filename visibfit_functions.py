@@ -850,7 +850,7 @@ def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_
 		# axs[i].axis('off')
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
-	uvax = fig.add_axes( rect=[1.1, 0., 1/2.8, 0.35])		# add an axes for the uvplot
+	uvax = fig.add_axes( rect=[1.1, 0.2, 1/2.8, 0.35])		# add an axes for the uvplot
 	uvax = make_uvplots( diskname, bestfit_pars, galargs, two_comp, 33e3, wle, config_name, make_modelimg=False, Axes=uvax)
 	fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
@@ -877,7 +877,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	# bestfit = np.loadtxt('bestfit_params.txt')
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
-	#copy_extra_sources( diskname, nRMS, config_name)
+	# copy_extra_sources( diskname, nRMS, config_name)
 	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, wle=wle, config_name=config_name, save_vis=True )
 	residuals_vis_plot( diskname, mod_vis, T_exp, config_name )
 	run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')

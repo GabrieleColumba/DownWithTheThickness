@@ -180,7 +180,7 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
 	hh = ax.hist( x=ratio, bins='doane', color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
 	ax.axvline( x=1, ls='--', c='k', alpha=0.99)
 	ax.axvline( x=median_r, ls='-.', c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
-	ax.axvline( x=mean_r, ls=':', c='k', label=f'mean = {mean_r :.2f}', alpha=0.7 )
+	ax.axvline( x=mean_r, ls=':', c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
 		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
 	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=ptitle )
@@ -1074,8 +1074,9 @@ if __name__=='__main__':
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( Rdf, run_name=run_suffix )
 	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	visib_ratios_plot( model='full', quantity='mod')
 	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	# visib_ratios_plot( model='full', quantity='mod')
+
 
 
 # Texp = 3600
