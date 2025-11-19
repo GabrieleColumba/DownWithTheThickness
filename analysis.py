@@ -611,7 +611,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 		res_df[ [col, col+'_lo',col+'_up'] ] = pd.DataFrame( res_df[col].tolist(), index=res_df.index)
 	
 	os.chdir( results_dir )
-	res_df.to_csv( f'Ri-analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
+	res_df.to_csv( f'analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
 	# res_df = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')	# to load it
 	
 	if figures:
@@ -1064,7 +1064,7 @@ if __name__=='__main__':
 	folder_wle = f'{round(wle*1e3)}mm/'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' 		# results directory name
 	config_name = 'alma.cycle' + args['config']
-	run_suffix = f' - { folder_wle.strip("/") }  {args["Texp"]}s  {model_comps}'
+	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
 	# assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )

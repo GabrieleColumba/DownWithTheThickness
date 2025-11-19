@@ -22,24 +22,25 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 
 mm3 = 0.003		# wavelength [metres]
-Rmax_model = 7	# [arcsec]	
+Rmax_model = 3	# [arcsec]	
+
 
 def compare_gauss_plumm():
-	rarr = np.linspace(0, 6, 600)
-	sma = 0.3
+	rarr = np.linspace(0, 5, 500)
+	sma = 0.5
 	gp = GaussianProfile( rarr, 1, sigma=sma)
-	ris = sma * np.array([1,2,3])
-	pidxs = np.linspace(1, 5, 5)
+	ris = sma * np.array([0.5,1,2])
+	pidxs = np.array([1.3, 2, 3,])
 	n = len(ris) * len(pidxs)
 	colors = plt.cm.jet( np.linspace(0,1,n) )	# colouring lines
 	i = 0
 		
 	fig, ax = plt.subplots( figsize=(8, 8))		# diagnostic figure
-	ax.plot( rarr, gp, c='k', lw=2)
+	ax.plot( rarr, gp, c='k', lw=2, label=f'gaussian, $\sigma$={sma :.1f}')
 
 	for ri in ris:
 		for p in pidxs:
-			pp = Plummer_envelope( rarr, 1, ri, 6, p)
+			pp = Plummer_envelope( rarr, 1, ri, 5, p)
 			ax.plot( rarr, pp, c=colors[i], alpha=0.7, label=f'Ri={ri}, p={p :.2f}')
 			ax.set( xscale='linear', yscale='log')
 			i +=1
@@ -221,7 +222,9 @@ def log_prior( pars, p_ranges, two_comp):
 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
 		if two_comp == True:
-			if ( pars[3]*pars[4] < Rmax_model ):		# impose that  Rout < Rmax (galario grid) 
+			Rout_constrain = (pars[3]*pars[4] > pars[2]) & (pars[3]*pars[4] < Rmax_model)		# sigma < Rout < Rmax (galario grid)
+			Ri_constrain = True # pars[3] >= pars[2]		# Ri > sigma
+			if Ri_constrain and Rout_constrain:	
 				return 0.0
 			else: return -np.inf
 		else:
@@ -574,8 +577,8 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 			ctk.tclean(		# image the subtracted data !
 				vis= MSname, imagename='./xsrc_sub/rough', datacolumn='corrected', 
 				imsize=extra_sources[0].shape, cell = f'{extra_sources[1]}rad',
-				phasecenter='ICRS 16h26m28.2s  -24d24m06.12s', deconvolver='clark', 
-				weighting='briggs', niter=10, nsigma=1, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
+				phasecenter='ICRS 16h26m28.2s  -24d24m06.12s', #deconvolver='clark', 
+				weighting='briggs', niter=100, nsigma=1, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
 			
 			casa_table.open( './xsrc_sub/rough.image' )		# the one created above, in [Jy/beam]
 			img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
@@ -850,7 +853,7 @@ def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_
 		# axs[i].axis('off')
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
-	uvax = fig.add_axes( rect=[1.1, 0.2, 1/2.8, 0.35])		# add an axes for the uvplot
+	uvax = fig.add_axes( rect=[1.12, 0.2, 1/2.8, 0.35])		# add an axes for the uvplot
 	uvax = make_uvplots( diskname, bestfit_pars, galargs, two_comp, 33e3, wle, config_name, make_modelimg=False, Axes=uvax)
 	fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
@@ -901,7 +904,6 @@ def get_galargs( wle):
 	u /= wle
 	v /= wle	# have the baselines in lambda units
 	nxy, dxy = gd.get_image_size( u, v, verbose=False) # , PB=1.13*wle/12 )		# number and size of pixel in radians
-
 	# radial grid parameters
 	Rmin = 0  			# [arcsec]
 	Rmax = Rmax_model	# [arcsec]
@@ -938,7 +940,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2c = np.array([11, 8.4, 0.3, 0.5, 10., 2.5, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
+	p0_2c = np.array([11, 8.4, 0.2, 0.3, 5.5, 2.5, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
 	p0_gauss = np.array([12, 0.2, 80., 45., 0., 0.])				# Log(I0), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c
