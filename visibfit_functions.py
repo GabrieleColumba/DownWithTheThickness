@@ -22,7 +22,7 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 
 mm3 = 0.003		# wavelength [metres]
-Rmax_model = 3	# [arcsec]	
+Rmax_model = 6	# [arcsec]	
 
 
 def compare_gauss_plumm():
@@ -223,7 +223,7 @@ def log_prior( pars, p_ranges, two_comp):
 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
 		if two_comp == True:
 			Rout_constrain = (pars[3]*pars[4] > pars[2]) & (pars[3]*pars[4] < Rmax_model)		# sigma < Rout < Rmax (galario grid)
-			Ri_constrain = True # pars[3] >= pars[2]		# Ri > sigma
+			Ri_constrain = pars[3] >= pars[2]		# Ri > sigma
 			if Ri_constrain and Rout_constrain:	
 				return 0.0
 			else: return -np.inf
@@ -735,8 +735,9 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 						# 'DXY_orig': dxy, 'DR': dR, 'NR': nR, 'Funit':'[Jy/pix]'})
 		# fits.writeto( 'best_model.fits', bestmod_image[:, ::-1], overwrite=True, header=hdr)	# save it like skycut
 	else: bestmod_image = [[0,0]]
-		
-	red_chi2 = chi2/(nR - len(bestfit))
+	
+	# Nant = 42 # len( np.unique( table.getcol('ANTENNA')))		# number of antennas used (same for all my runs)
+	red_chi2 = chi2/(nR - len(bestfit))			#  chi2/(Nant*(Nant-1)/2 - len(bestfit))
 	print( '\ngalario Chi^2: ', chi2, '\n reduced chi2: ', red_chi2 ,'\n\n' )
 	# np.savetxt( f'bestfit_chi2.txt', bestfit, footer=f'\n{red_chi2 :.3f} \t (reduced chi2) \n{chi2 :.2f} \t (chi2)')
 	
@@ -753,7 +754,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 	uv.uvbin( uvbin_size)
 	mask = uv.bin_count != 0 # slice(None)
 	uvdist = uv.bin_uvdist[mask] / 1000
-	data_dict = {'fmt':'o', 'ms':6, 'color':'k', 'linewidth':0, 'capsize':2, 'ecolor':'gray', 'elinewidth':0.5, 'label':'Data', 'alpha':0.8}
+	data_dict = {'fmt':'o', 'ms':5, 'color':'k', 'linewidth':0, 'capsize':2, 'ecolor':'gray', 'elinewidth':0.5, 'label':'Data', 'alpha':0.8}
 	ax.errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
 	axins.errorbar( x=uvdist, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
 	del uv
@@ -764,15 +765,15 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 	# uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
 	uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
 	uvdist = uv_mod.bin_uvdist[mask] / 1000 
-	model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.6, 'label':'Model', 'alpha':0.95}	
+	model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.8, 'label':'Model', 'alpha':0.95}	
 	ax.errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
 	axins.errorbar( uvdist, uv_mod.bin_im[mask], **model_dict)
-	ax.text( x=0.99, y=0.95, s= fr'$\chi^2_\nu$={red_chi2 :.3f}', ha='right', va='center', transform=ax.transAxes, color='gray', fontsize=9, alpha=1.)
+	ax.text( x=0.95, y=0.95, s= fr'$\chi^2_\nu$={red_chi2 :.3f}', ha='right', va='center', transform=ax.transAxes, color='gray', fontsize=9, alpha=1.)
 	del uv_mod
 
 	if two_comp:
 		for i, comp in enumerate([diskmod, envmod]):		# separately plot disk and envelope contributions
-			colors, labs = ['tab:blue', 'tab:green'], ['disk','envelope']
+			colors, labs, lls = ['tab:blue', 'tab:green'], ['disk','envelope'], ['--',':']
 			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')	
 			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
 			if save_vis: 	
@@ -782,7 +783,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 			uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
 			uvdist = uv_mod.bin_uvdist[mask] / 1000 
-			comp_dict = { 'ls':'--', 'color':colors[i], 'lw':1.5, 'label':labs[i], 'alpha':0.92}
+			comp_dict = { 'ls':lls[i], 'color':colors[i], 'lw':1.5, 'label':labs[i], 'alpha':0.92}
 			ax.errorbar( uvdist, uv_mod.bin_re[mask],  **comp_dict)
 			axins.errorbar( uvdist, uv_mod.bin_im[mask], **comp_dict)
 			# uv_mod.plot( axes=(ax, axins), linestyle='--', color=colors[i], alpha=0.9, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size, fontsize=10)
@@ -790,11 +791,11 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 
 	ax.set( ylabel='Re(V) [Jy]', xscale='log', yscale='log') ; ax.legend( loc='best', bbox_to_anchor=(0, 0, 0.9, 0.9), fontsize=8)
 	axins.set( ylabel='Im(V) [Jy]', xscale='log', xlabel='uvdistance [k$\mathrm{\lambda}$]' )
-	if ax.get_ylim()[0] < 1e-5: ax.set( ylim=[1e-5, ax.get_ylim()[1]] )		# force lower ylim at 1e-5
+	if ax.get_ylim()[0] < 1e-4: ax.set( ylim=[1e-4, ax.get_ylim()[1]] )		# force lower ylim at 1e-5
 	if Axes != None: 
 		return ax
 	else: 
-		fig.savefig( 'uvplot_log' + fig_ext, dpi=300, bbox_inches='tight')
+		fig.savefig( 'uvplot_log' + fig_ext, dpi=200, bbox_inches='tight')
 	plt.close()
 	return bestmod_image, vis_mod
 
@@ -854,7 +855,7 @@ def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
 	uvax = fig.add_axes( rect=[1.12, 0.2, 1/2.8, 0.35])		# add an axes for the uvplot
-	uvax = make_uvplots( diskname, bestfit_pars, galargs, two_comp, 33e3, wle, config_name, make_modelimg=False, Axes=uvax)
+	uvax = make_uvplots( diskname, bestfit_pars, galargs, two_comp, 30e3, wle, config_name, make_modelimg=False, Axes=uvax)
 	fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
 	fig.savefig( f'pentaplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
@@ -923,9 +924,9 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 	p_ranges_2c = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
 						[7.8, 13.],		# Log10( IOenvelope)   
 						[1e-5, .8],		# sigma i.e. sma [arcsec]
-						[1e-4, 1.6],	# Ri [arcsec] (Rmax= 8 / 5 = 1.6, to avoid an envelope cut at high fluxes)
+						[1e-3, 1.6],	# Ri [arcsec] (Rmax= 8 / 5 = 1.6, to avoid an envelope cut at high fluxes)
 						[5, 1000],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
-						[1.3, 3.5],		# p_index []
+						[1.3, 2.99],	# p_index []
 						[-5., 95.],		# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
