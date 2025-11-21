@@ -22,7 +22,7 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 
 mm3 = 0.003		# wavelength [metres]
-Rmax_model = 6	# [arcsec]	
+Rmax_model = 8	# [arcsec]	
 
 
 def compare_gauss_plumm():
@@ -222,8 +222,8 @@ def log_prior( pars, p_ranges, two_comp):
 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
 		if two_comp == True:
-			Rout_constrain = (pars[3]*pars[4] > pars[2]) & (pars[3]*pars[4] < Rmax_model)		# sigma < Rout < Rmax (galario grid)
-			Ri_constrain = pars[3] >= pars[2]		# Ri > sigma
+			Rout_constrain = (pars[3]*pars[4] > 1) & (pars[3]*pars[4] < Rmax_model)		# 1" < Rout < Rmax (galario grid)
+			Ri_constrain = (pars[3] >= 0.9 *pars[2]) # & (pars[3] < 10 *pars[2])						# 0.9*sigma < Ri  #< 3*sigma
 			if Ri_constrain and Rout_constrain:	
 				return 0.0
 			else: return -np.inf
@@ -578,7 +578,7 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 				vis= MSname, imagename='./xsrc_sub/rough', datacolumn='corrected', 
 				imsize=extra_sources[0].shape, cell = f'{extra_sources[1]}rad',
 				phasecenter='ICRS 16h26m28.2s  -24d24m06.12s', #deconvolver='clark', 
-				weighting='briggs', niter=100, nsigma=1, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
+				weighting='briggs', niter=50, nsigma=3, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
 			
 			casa_table.open( './xsrc_sub/rough.image' )		# the one created above, in [Jy/beam]
 			img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
@@ -921,10 +921,10 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 	galargs = get_galargs( wle=wle) 
 
 	# parameter space domain
-	p_ranges_2c = np.array([[8., 15],	# Log10( I0disk )	[Log(Jy/sr)]
+	p_ranges_2c = np.array([[7.8, 13],	# Log10( I0disk )	[Log(Jy/sr)]
 						[7.8, 13.],		# Log10( IOenvelope)   
-						[1e-5, .8],		# sigma i.e. sma [arcsec]
-						[1e-3, 1.6],	# Ri [arcsec] (Rmax= 8 / 5 = 1.6, to avoid an envelope cut at high fluxes)
+						[1e-2, .8],		# sigma i.e. sma [arcsec]
+						[1e-2, 1.6],	# Ri [arcsec] (Rmax= 8 / 5 = 1.6, to avoid an envelope cut at high fluxes)
 						[5, 1000],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
 						[1.3, 2.99],	# p_index []
 						[-5., 95.],		# inc (deg)
@@ -941,7 +941,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2c = np.array([11, 8.4, 0.2, 0.3, 5.5, 2.5, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
+	p0_2c = np.array([11, 8.4, 0.2, 0.3, 6, 2.5, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
 	p0_gauss = np.array([12, 0.2, 80., 45., 0., 0.])				# Log(I0), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c

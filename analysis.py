@@ -282,7 +282,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
 	ptitle = 'Disk mass comparison' + run_name
-	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True )
+	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True )
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
 	if errors: 
 		scatter_with_errors( ax=ax, x= df.M_sim/100, y=M_obs, y_lo=M_obs_lo, y_up=M_obs_up, fmt='o', facecolor='tab:red', marker_alpha=0.76 )
@@ -314,7 +314,7 @@ def plot_radius_compare( df, res_limit, run_name, errors=True):
 	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
 
 	ptitle = 'Radius comparison' + run_name
-	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
+	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
 	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
@@ -324,7 +324,7 @@ def plot_radius_compare( df, res_limit, run_name, errors=True):
 	else:
 		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.7, zorder=3.7)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
-	ax.text( x=0.01, y=0.7, s=(f'median accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.1f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
+	ax.text( x=0.01, y=0.7, s=(f'obs/sim accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.1f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
 		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.1f}x'),
 		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
@@ -345,7 +345,7 @@ def plot_inc_compare( df, run_name):
 	qs = np.nanquantile( df.i_obs / df.i_sim, [0.16, 0.5, 0.84] )
 
 	ptitle = 'Inclination comparison' + run_name
-	fig, ax = plt.subplots( figsize=(5,5), tight_layout=True)
+	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
 	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.9, err_alpha=0.27 )
 	# ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
@@ -460,7 +460,7 @@ def produce_truths_df():
 		angs_y.append( np.arccos( directions[1]) *180/np.pi)    
 		angs_z.append( np.arccos( directions[2]) *180/np.pi)    
 		Rsim.append( disks[prefix + '_radius'] )
-		Rmean.append( disks[prefix + '_mean_radius'] )
+		# Rmean.append( disks[prefix + '_mean_radius'] )	# useless
 		Msim.append( disks[prefix + '_mass'] )				# disk mass
 		Mcyl.append( disks[prefix + '_mass_cyl'] )			# env mass ?
 		Menv.append( disks[prefix + '_mass_env_1000'] )		# env mass ?
@@ -469,7 +469,7 @@ def produce_truths_df():
 		dTemp1.append( disks[prefix + '_Temp_mid'] )		# mid, mavg o simple ?
 		dTemp2.append( disks[prefix + '_Temp_mavg'] )
 		multip.append( disks[prefix + '_multiplicity'])
-		hr.append( disks[prefix + '_hoverr'] )				# scale height?
+		# hr.append( disks[prefix + '_hoverr'] )				# scale height?
 		Mstar.append( disks[prefix + '_sink_mass'] )		# star mass
 		age.append( disks[prefix + '_sink_age'] )
 
@@ -930,7 +930,8 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 				inc, PA, dRA, dDec = bestfit[-4:]
 				inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert to [rad] !
 				galargs = get_galargs( wle=wle)
-				vis_mod = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp )[2]
+				chi2, vis_mod = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp )[-2:]
+				red_chi2 = chi2/(galargs[2] - len(bestfit)) 	# chi2/(42*(42-1)/2 - len(bestfit))	# with 42 antennas
 				u, v, Re_obs, Im_obs, w = galargs[-5:]
 				axins = axes[d].inset_axes( [0,-0.2 , 1, 0.2] )
 				# observations uv-plot !
@@ -940,7 +941,7 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 				uv.uvbin( binsize)		# , 'zorder':1.9
 				mask = uv.bin_count != 0 # slice(None)
 				uvdist = uv.bin_uvdist[mask]/1000
-				data_dict = {'fmt':'o', 'ms':3, 'color':'k', 'linewidth':0, 'capsize':1.2, 'capthick':1, 'ecolor':'gray', 'elinewidth':0.1, 'label':'Data', 'alpha':0.7}
+				data_dict = {'fmt':'o', 'ms':3, 'color':'k', 'linewidth':0, 'capsize':1.2, 'capthick':1, 'ecolor':'gray', 'elinewidth':0.2, 'label':'Data', 'alpha':0.7}
 				axes[d].errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
 				axins.errorbar( x=uvdist, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
 				del uv
@@ -953,10 +954,11 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 				model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.3, 'label':'Model', 'alpha':1}	
 				axes[d].errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
 				axins.errorbar( uvdist, uv_mod.bin_im[mask], **model_dict)
+				axes[d].text( x=0.92, y=0.92, s= fr'$\chi^2_\nu$={red_chi2 :.3f}', ha='right', va='center', transform=axes[d].transAxes, color='k', alpha=.8)
 				del uv_mod
 
 				if two_comp:
-					colors, labs, lss = ['g', 'b'], ['disk','envelope'], ['--', ':']
+					colors, labs, lss = ['tab:blue', 'tab:green'], ['disk','envelope'], ['--', ':']
 					with open( disk_dirs[d] + '/visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
 						mod_vis = [np.load( f), np.load( f)] 		# disk_vis, env_vis
 					for i in range( len( mod_vis)):				# separately plot disk and envelope contributions
@@ -973,8 +975,8 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 				axes[d].set_title( diskname, fontsize=8)
 				axes[d].set( xscale='log', yscale='log') ; axins.set( xscale='log')
 				if axes[d].get_ylim()[0] < 1e-4: axes[d].set( ylim=[1e-4, axes[d].get_ylim()[1]] )		# force lower ylim at 1e-5
-				axes[d].tick_params(axis='both', left=True, top=False, right=False, bottom=False, labelleft=True, labeltop=False, labelright=False, labelbottom=False)
-				axins.tick_params(axis='both', left=False, top=False, right=False, bottom=True, labelleft=False, labeltop=False, labelright=False, labelbottom=True)
+				# axes[d].tick_params(axis='both', left=True, top=False, right=False, bottom=False, labelleft=True, labeltop=False, labelright=False, labelbottom=False)
+				# axins.tick_params(axis='both', left=False, top=False, right=False, bottom=True, labelleft=False, labeltop=False, labelright=False, labelbottom=True)
 
 			except Exception as e:
 				print(f"\nCould not do for {diskname}: {e}\n")
@@ -983,10 +985,9 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 			axes[d].set_visible(False)
 
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
-	# fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
 	supylab = 'Re(V)'
 	fig.supylabel( supylab, x=0.0, fontsize=10 )
-	fig.supxlabel('uv-distance [k$\lambda$]', fontsize=10 )		#, weight='bold'
+	fig.supxlabel('uv-distance [k$\mathrm{\lambda$}]', fontsize=10 )		#, weight='bold'
 	axes[0].legend()
 	fig.savefig( results_dir + ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
@@ -1067,14 +1068,14 @@ if __name__=='__main__':
 	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
-	# assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	rdf = main_analysis( prettylist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
+	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( Rdf, run_name=run_suffix )
 	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 	# visib_ratios_plot( model='full', quantity='mod')
 
 
