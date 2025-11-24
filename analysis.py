@@ -23,7 +23,7 @@ from visibfit_functions import crop_image
 plt.rcParams.update({ 'font.size':10, 'legend.fontsize':8, 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24, wb 43 ?? not shown
-OKlist = 	np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 78, 79, 82, 83, 43]) 	# (70, 78, 29, 52 no bc binary, 43 misterious and thick, 63 75 no bc no info in truths)
+OKlist =    np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 78, 79, 82, 83, 43]) 	# (70, 78, 29, 52 no bc binary, 43 misterious and thick, 63 75 no bc no info in truths)
 prettylist =np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83])
 # pixscale = 9.92063492063492e-6      	# deg
 # sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
@@ -289,9 +289,9 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	else:	ax.scatter( x=df.M_sim/100, y=M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
 	# ax.text( x=0.01, y=0.85, s= f'median accuracy: {qs[0] :1.1f}x \n$\sigma =${np.std(M_obs - df.M_sim/100) :1.1f}' + '[M$_{\odot}$]',
 	# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
-	ax.text( x=0.01, y=0.90, s= f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)',
+	ax.text( x=0.01, y=0.85, s= f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)',
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=12, alpha=1.)
-	ax.text( x=0.01, y=0.85, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
+	ax.text( x=0.01, y=0.92, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
 	axlims = [ 3e-5, 1.2e-2]
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xscale='log', yscale='log', xlim=axlims, ylim=axlims, aspect='equal', title=ptitle )
@@ -324,13 +324,13 @@ def plot_radius_compare( df, res_limit, run_name, errors=True):
 	else:
 		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.7, zorder=3.7)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
-	ax.text( x=0.01, y=0.7, s=(f'obs/sim accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.1f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
+	ax.text( x=0.01, y=0.85, s=(f'obs/sim accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.1f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
 		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.1f}x'),
 		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
 		 title=ptitle, xlim=[0.05,2.4], ylim=[0.05, 2.4], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	ax.legend()
+	ax.legend( loc='lower right')
 	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
@@ -349,8 +349,8 @@ def plot_inc_compare( df, run_name):
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
 	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.9, err_alpha=0.27 )
 	# ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
-	ax.text( x=0.01, y=0.85, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
-		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
+	ax.text( x=0.01, y=0.92, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
+		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=9, alpha=0.8)
 	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', aspect='equal', xlim=[0,90], ylim=[0,90], title=ptitle )
 	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf')]
 	# plt.show()
@@ -987,7 +987,7 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
 	supylab = 'Re(V)'
 	fig.supylabel( supylab, x=0.0, fontsize=10 )
-	fig.supxlabel('uv-distance [k$\mathrm{\lambda$}]', fontsize=10 )		#, weight='bold'
+	fig.supxlabel('uv-distance [k$\mathrm{\lambda}$]', fontsize=10 )		#, weight='bold'
 	axes[0].legend()
 	fig.savefig( results_dir + ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
@@ -1074,8 +1074,8 @@ if __name__=='__main__':
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( Rdf, run_name=run_suffix )
-	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
+	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 	# visib_ratios_plot( model='full', quantity='mod')
 
 
