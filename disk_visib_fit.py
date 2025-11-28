@@ -7,7 +7,7 @@ from visibfit_functions import *
 import argparse
 
 # Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples ?)	
-NOfit = [63, 75]
+NOfit = [29, 63, 75]
 
 if __name__=='__main__':
 
@@ -19,7 +19,7 @@ if __name__=='__main__':
 	parser.add_argument('-nsteps', type=int, default=5000, help='MCMC steps (default: 5000)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-replot_only', action='store_true', help='replot all the bestfit plots for the fitting part (default: False)')
-	parser.add_argument('-nRMS', type=float, default=5, help='nRMS to threshold the xsrc detection (default: 5)')
+	parser.add_argument('-nRMS', type=float, default=10, help='nRMS to threshold the xsrc detection (default: 10)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')		# deprecated now
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )

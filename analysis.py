@@ -178,8 +178,8 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
 	# fig.suptitle( ptitle )
 	q16, median_r, q84 = np.nanquantile( ratio, [0.16, 0.5, 0.84])
 	hh = ax.hist( x=ratio, bins='doane', color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
-	ax.axvline( x=1, ls='--', c='k', alpha=0.99)
-	ax.axvline( x=median_r, ls='-.', c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
+	ax.axvline( x=1, ls='--', lw=2, c='k', alpha=0.99)
+	ax.axvline( x=median_r, ls='-.', lw=1.5, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
 	ax.axvline( x=mean_r, ls=':', c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
 		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
@@ -830,6 +830,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 			return np.sqrt( uvtab.bin_im**2 + uvtab.bin_re**2 )
 		
 	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
+	os.chdir( savedir_prefix )			# save plot here
 	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
 	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc/'
 	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
@@ -1073,9 +1074,9 @@ if __name__=='__main__':
 	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
-	# plot_correlations( Rdf, run_name=run_suffix )
-	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	# plot_correlations( rdf, run_name=run_suffix )
+	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
+	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 	# visib_ratios_plot( model='full', quantity='mod')
 
 
