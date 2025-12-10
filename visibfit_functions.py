@@ -135,12 +135,12 @@ def galario_model( pars, galargs, two_comp=True):
 	return (disk_model, env_model), chi2, vis_target
 
 
-def copy_extra_sources( diskname, nRMS, config_name='', deconvmod=True ):
+def copy_extra_sources( MSname, nRMS, deconvmod=True ):
 	'''
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image' )				# noisy image (for regions selection only)
+	table.open( MSname.replace('.ms', '') + '.image' )					# noisy image (for regions selection only)
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 		# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']			# a, b and PA of beam
 	beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
@@ -149,7 +149,7 @@ def copy_extra_sources( diskname, nRMS, config_name='', deconvmod=True ):
 	xsrc_img = noisy_img	# deprecated !
 	factor = beam_to_pix
 	if deconvmod:
-		table.open( f'{diskname}.{config_name}.noisy.model' )		
+		table.open( MSname.replace('.ms', '') + '.model' )		
 		deconvolved = table.getcol('map').squeeze().copy( order='F').T			# deconvolved model image of the sky [Jy/pix]
 		xsrc_img = deconvolved
 		factor = 1		# deconv is already in [Jy/pix]
@@ -223,7 +223,7 @@ def log_prior( pars, p_ranges, two_comp):
 	if (p_ranges[:, 0] < pars).all() and (pars < p_ranges[:, 1]).all():
 		if two_comp == True:
 			Rout_constrain = (pars[3]*pars[4] > 1) & (pars[3]*pars[4] < Rmax_model)		# 1" < Rout < Rmax (galario grid)
-			Ri_constrain = (pars[3] >= 0.9 *pars[2]) # & (pars[3] < 10 *pars[2])						# 0.9*sigma < Ri  #< 3*sigma
+			Ri_constrain = (pars[3] >= 0.7 *pars[2]) # & (pars[3] < 10 *pars[2])						# 0.7*sigma < Ri  #< 3*sigma
 			if Ri_constrain and Rout_constrain:	
 				return 0.0
 			else: return -np.inf
@@ -257,7 +257,7 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 	sampler = emcee.EnsembleSampler( nwalkers, ndim, log_probability, args=(p_ranges, galargs, two_comp), 
 							# threads=nthreads, 
 							backend=bknd_samp, # live_dangerously=False, 
-			moves=[ (emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2),], 	# mv1
+			moves=[ (emcee.moves.DEMove(), 0.7), (emcee.moves.DESnookerMove(), 0.3),], 	# mv1
 			# moves=[ (emcee.moves.StretchMove(), 0.5), (emcee.moves.DEMove(), 0.5),], 		# mv2
 			# moves = emcee.moves.KDEMove(), 	# mv3	
 			)
@@ -511,7 +511,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	plt.close()
 
 
-def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3, config_name=''):
+def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3, config_name='', compact_config=True):
 	'''
 	Call CASA simobserve and simanalyze to produce mock observations of filename.
 	'''
@@ -527,7 +527,6 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 	try:
 		ctk.simobserve( project=diskname ,
 			skymodel= f'{diskname}/skymodel.imag' ,
-			# indirection='J2000 16h26m26.39-24d24m30.7' , #also used as pointing center
 			setpointings= False,  
 			ptgfile= ptgfile, 
 			incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
@@ -541,25 +540,56 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 			graphics= 'file')
 		plt.close()
 
+		if compact_config:
+			ctk.simobserve( project=diskname ,
+				skymodel= f'{diskname}/skymodel.imag' ,
+				setpointings= False,  
+				ptgfile= ptgfile, 
+				incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
+				inwidth = '7.5GHz' ,
+				antennalist= 'alma.cycle11.3.cfg',		# add wle dependence !
+				totaltime= f'{T_exp//2}s' ,
+				thermalnoise= 'tsys-atm',
+				user_pwv= 0.7 if wle<2e-3 else 5.186,   # 5.186 @ 3 & 7mm, 0.7 @ 1mm
+				overwrite = False,
+				graphics= 'file') 
+			
+			conc_name = f'{diskname}.concat.noisy.cms'
+			ctk.virtualconcat( vis=[ f'{diskname}/{MSname}', f'{diskname}/{diskname}.alma.cycle11.3.noisy.ms'], concatvis= f'{diskname}/{conc_name}')		# merge both MS into one
+			MSname = conc_name
+			os.system( f'rm -rf {diskname}/{diskname}.*.ms')		# delete the ideal MSs that we do not use
+
 		# Image and analyze the simulated visibilities
 		ctk.simanalyze( project=diskname ,
-			vis= f'{diskname}/{MSname}' ,
+			vis= f'{diskname}/{MSname}', 
 			imsize = [0,0] , 	# [0 ,0] means model image will be matched
 			cell= '' , 			# empty string means model cell size is to be used
 			niter = 10000,
-			# imdirection='J2000 16h26m28.2s  -24d24m06.12s',
 			interactive = False ,
 			threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
 			weighting = 'briggs',
 			analyze= False,
 			graphics= 'file')
+		# ctk.tclean(		# image the best model !
+		# 	vis= MSname,
+		# 	imagename='./bestmod/best_model',
+		# 	datacolumn='corrected',  		# Use the corrected_data where we stored the model visibilities
+		# 	imsize= noisy_img.shape,	
+		# 	cell = f'{pixscale}rad',
+		# 	phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
+		# 	weighting='briggs', deconvolver='clark', 
+		# 	niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
+		# 	) 
 		plt.close()
 	
-	except: print( '\nSimobserve/analyze already performed, proceeding\n')
-
+	except Exception as e: 
+		print( 'Exception:', e)
+		print( '\nSimobserve/analyze already performed, proceeding\n')
+	
 	os.chdir( diskname )
 	if monosource==False:
-		extra_sources = copy_extra_sources( diskname, nRMS=nRMS, config_name=config_name )
+		MSname = f'{diskname}.concat.noisy.cms' if compact_config else f'{diskname}.{config_name}.noisy.ms'
+		extra_sources = copy_extra_sources( MSname, nRMS=nRMS )
 		if np.any( extra_sources[0]):
 			print('\n  Subtracting EXTRA SOURCES from MOCK-OBS visibilities!  \n')
 			casa_table = cto.table()
@@ -619,14 +649,13 @@ def min_bkg_rms( image):
 	return min( min(bkg_rms), rms(image) )
 
 
-def residuals_vis_plot( diskname, model_vis, T_exp, config_name):
+def residuals_vis_plot( MSname, model_vis, T_exp):
 	'''
 	Calculate the residuals between the visibilities of the mock observations and the bestfit model (galario + multisource).
 	'''
-	MSname = f'{diskname}.{config_name}.noisy.ms'		# mock obs MS
-	# os.system( f'cp -R {MSname}/ NoisyMS_copy/')
+	# MSname = f'{diskname}.{config_name}.noisy.ms'		# mock obs MS
 	casa_table = cto.table()
-	casa_table.open( f'{diskname}.{config_name}.noisy.image' )
+	casa_table.open( MSname.replace('.ms', '') + '.image' )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
 	pixscale = abs( casa_table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
 	casa_table.close()
@@ -644,7 +673,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp, config_name):
 		imsize= noisy_img.shape,	
 		cell = f'{pixscale}rad',
 		phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
-		weighting='briggs', deconvolver='clark', 
+		weighting='briggs', robust=0.2, #deconvolver='clark', 
 		niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 	
@@ -671,7 +700,7 @@ def residuals_vis_plot( diskname, model_vis, T_exp, config_name):
 		datacolumn='corrected',  			# Use the corrected_data where we stored the residual visibilities
 		imsize= noisy_img.shape,			# compare with noisy image
 		cell = f'{pixscale}rad',
-		weighting='briggs', deconvolver='clark', 
+		weighting='briggs', robust=0.2, #deconvolver='clark', 
 		phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
 		niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
@@ -710,7 +739,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle=mm3, config_name='', make_modelimg=True, save_vis=False, Axes=None ):
+def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=5e3, wle=mm3, make_modelimg=True, save_vis=False, Axes=None ):
 	'''
 	Produce UVplots for all the bestfit solutions. 
 	'''
@@ -724,7 +753,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 		rot_target = snd.rotate( diskmod + envmod, angle=-PA/deg, reshape=False )   	# correct for PA rotation  
 		r_s_target = snd.shift( rot_target, shift=( dDec/dxy, -dRA/dxy ) )  			# shift the model to match the mock obs 
 		table = cto.table()
-		table.open( f'{diskname}.{config_name}.noisy.image' )		# only for shape and pixscale
+		table.open( MSname.replace('.ms', '') + '.image' )		# only for shape and pixscale
 		npix = table.getcol('map').squeeze().shape[0]
 		pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])	# [rad/pix]
 		table.close()
@@ -800,7 +829,7 @@ def make_uvplots( diskname, bestfit_arr, galargs, two_comp, uvbin_size=30e3, wle
 	return bestmod_image, vis_mod
 
 
-def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_name, as_margin=3., rulersize=100):
+def pentaplot( diskname, MSname, bestfit_pars, galargs, two_comp, wle, run_name, as_margin=3., rulersize=100):
 	'''
 	Just plot together in a nice cut four panels about a target: sky model, mock-obs, model mock obs, residuals
 	'''
@@ -812,7 +841,7 @@ def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_
 	xc, yc = np.array( skycut.shape ) / 2
 
 	ct = cto.table()
-	ct.open( f'{diskname}.{config_name}.noisy.image' )		# cleaned simanalyze simulation image
+	ct.open( f"{MSname.replace('.ms', '')}.image" )		# cleaned simanalyze simulation image
 	noisy_img = ct.getcol('map').squeeze().copy( order='F').T
 	pixscale_m = np.rad2deg( abs( ct.getkeyword('coords')['direction0']['cdelt'][0]) ) * 3600		# [arcsec/pix]
 	beam_dict = ct.getkeyword('imageinfo')['restoringbeam']						# a, b and PA of beam [", ", deg]
@@ -855,14 +884,14 @@ def pentaplot( diskname, config_name, bestfit_pars, galargs, two_comp, wle, run_
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
 	uvax = fig.add_axes( rect=[1.12, 0.2, 1/2.8, 0.35])		# add an axes for the uvplot
-	uvax = make_uvplots( diskname, bestfit_pars, galargs, two_comp, 30e3, wle, config_name, make_modelimg=False, Axes=uvax)
+	uvax = make_uvplots( MSname, bestfit_pars, galargs, two_comp, 30e3, wle, make_modelimg=False, Axes=uvax)
 	fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
 	fig.savefig( f'pentaplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
 
-def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, monosource=False, nRMS=3, burnin=None, walksigma=3, wle=mm3, savedir='', config_name=''):
+def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, nRMS=3, burnin=None, walksigma=3, wle=mm3, savedir='', MSname=''):
 	'''
 	Produce MCMC plots (chains + corner), UVplot, best model and residual visib images for best solution.
 	'''
@@ -881,11 +910,11 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, m
 	# bestfit = np.loadtxt('bestfit_params.txt')
 	if galargs is None:
 		galargs = get_galargs( wle=wle)
-	# copy_extra_sources( diskname, nRMS, config_name)
-	model_image, mod_vis = make_uvplots( diskname, bestfit, galargs, two_comp=two_comp, wle=wle, config_name=config_name, save_vis=True )
-	residuals_vis_plot( diskname, mod_vis, T_exp, config_name )
+	# copy_extra_sources( MSname, nRMS)
+	model_image, mod_vis = make_uvplots( MSname, bestfit, galargs, two_comp=two_comp, wle=wle, save_vis=True )
+	residuals_vis_plot( MSname, mod_vis, T_exp )
 	run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
-	pentaplot( diskname, config_name, bestfit, galargs, two_comp, wle, run_name)
+	pentaplot( diskname, MSname, bestfit, galargs, two_comp, wle, run_name)
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
@@ -913,7 +942,7 @@ def get_galargs( wle):
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, savedir='', monosource=False, nRMS=2, wle=mm3, config_name=''):
+def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, savedir='', nRMS=2, wle=mm3, MSname=''):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
@@ -955,7 +984,7 @@ def mcmc_regress( diskname, T_exp, nsteps=200, two_components=True, Ncpu=None, s
 			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False )
 	
-	bestfit_plots( diskname, T_exp, galargs, two_components, sampled, monosource, nRMS, wle=wle, savedir=savedir, config_name=config_name)
+	bestfit_plots( diskname, T_exp, galargs, two_components, sampled, nRMS, wle=wle, savedir=savedir, MSname=MSname)
 
 
 

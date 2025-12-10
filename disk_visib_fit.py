@@ -20,6 +20,7 @@ if __name__=='__main__':
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-replot_only', action='store_true', help='replot all the bestfit plots for the fitting part (default: False)')
 	parser.add_argument('-nRMS', type=float, default=10, help='nRMS to threshold the xsrc detection (default: 10)')
+	parser.add_argument('-compconf', action='store_true', help='add a compact configuration observation to data (default: False)')
 	parser.add_argument('-damp', action='store_true', help='damp the sky model (default: False)')		# deprecated now
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	args = vars( parser.parse_args() )
@@ -42,7 +43,7 @@ if __name__=='__main__':
 		for fname in disklist:
 			if args["replot_only"]:		# check the disk already regressed and produce again plots
 				diskname = fname.replace( savedir, '' )
-				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_name )
+				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_name )
 			else:						# perform the regression from scratch
 				diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 				if int( diskname.strip( 'disk_xyz') ) in NOfit:
@@ -50,9 +51,9 @@ if __name__=='__main__':
 				else:
 					print( '\nRunning for: \t', diskname )
 					perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-						data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name)	
+							data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name)	
 					mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], nRMS=args['nRMS'], 
-				  		monosource=args['monosrc'],	Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_name)
+				  			Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_name)
 
 
 	else:			# regress one disk per task (suited for sbatch arrays)
@@ -65,7 +66,8 @@ if __name__=='__main__':
 		if args["replot_only"]:	
 			diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')		# for single disk names
 			#diskname = fname.replace( savedir, '' )															# for array sbatch runs
-			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], monosource=args['monosrc'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_name )
+			MSname = f'{diskname}.{config_name}.noisy.ms' if not args['compconf'] else f'{diskname}.concat.noisy.cms'
+			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, MSname=MSname )
 			sys.exit()		# replot and terminate before regressions
 
 		diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
@@ -73,7 +75,8 @@ if __name__=='__main__':
 			print('Skipping NO-FIT target: ', fname , '\n')
 		else:
 			print( '\nRunning for: \t', diskname )
+			MSname = f'{diskname}.{config_name}.noisy.ms' if not args['compconf'] else f'{diskname}.concat.noisy.cms'
 			perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-					data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name )
+					data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name, compact_config=args['compconf'] )
 			mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-					Ncpu=Ncpu, savedir=savedir, monosource=args['monosrc'], nRMS=args['nRMS'], wle=wle, config_name=config_name)
+					Ncpu=Ncpu, savedir=savedir, nRMS=args['nRMS'], wle=wle, MSname=MSname)
