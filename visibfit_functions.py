@@ -264,7 +264,7 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
 	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
 	# sampler.reset()
-	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True)			# full production run
+	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True, thin=4)			# full production run
 	return sampler
 
 
@@ -541,13 +541,15 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 		plt.close()
 
 		if compact_config:
+			cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }		# compact configuration for each wavelength
+			cc_name = f'alma.cycle11.{cc_dict[wle]}'
 			ctk.simobserve( project=diskname ,
 				skymodel= f'{diskname}/skymodel.imag' ,
 				setpointings= False,  
 				ptgfile= ptgfile, 
 				incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
 				inwidth = '7.5GHz' ,
-				antennalist= 'alma.cycle11.3.cfg',		# add wle dependence !
+				antennalist= cc_name + '.cfg',	
 				totaltime= f'{T_exp//2}s' ,
 				thermalnoise= 'tsys-atm',
 				user_pwv= 0.7 if wle<2e-3 else 5.186,   # 5.186 @ 3 & 7mm, 0.7 @ 1mm
@@ -555,7 +557,7 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 				graphics= 'file') 
 			
 			conc_name = f'{diskname}.concat.noisy.cms'
-			ctk.virtualconcat( vis=[ f'{diskname}/{MSname}', f'{diskname}/{diskname}.alma.cycle11.3.noisy.ms'], concatvis= f'{diskname}/{conc_name}')		# merge both MS into one
+			ctk.virtualconcat( vis=[ f'{diskname}/{MSname}', f'{diskname}/{diskname}.{cc_name}.noisy.ms'], concatvis= f'{diskname}/{conc_name}')		# merge both MS into one
 			MSname = conc_name
 			os.system( f'rm -rf {diskname}/{diskname}.*.ms')		# delete the ideal MSs that we do not use
 
@@ -739,7 +741,7 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	return resampled * flux_rescale		# [Jy/pix]
 
 
-def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=5e3, wle=mm3, make_modelimg=True, save_vis=False, Axes=None ):
+def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=8e3, wle=mm3, make_modelimg=True, save_vis=False, Axes=None ):
 	'''
 	Produce UVplots for all the bestfit solutions. 
 	'''
@@ -904,7 +906,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
 	nsteps = sampler.get_chain().shape[0]
 	if burnin is None:
-		burnin = nsteps//2
+		burnin = nsteps//(4*4)		# 4 is the thinning factor in the mcmc run
 	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
 	np.savetxt( f'bestfit_params.txt', bestfit )		# save a (Npar, 3) table with the columns being: best value, 16p, 84p
 	# bestfit = np.loadtxt('bestfit_params.txt')
