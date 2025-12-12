@@ -550,7 +550,7 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 				incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
 				inwidth = '7.5GHz' ,
 				antennalist= cc_name + '.cfg',	
-				totaltime= f'{T_exp//2}s' ,
+				totaltime= f'{T_exp}s' ,
 				thermalnoise= 'tsys-atm',
 				user_pwv= 0.7 if wle<2e-3 else 5.186,   # 5.186 @ 3 & 7mm, 0.7 @ 1mm
 				overwrite = False,
