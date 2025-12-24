@@ -689,9 +689,8 @@ def assess_SNR( wle, results_dir, config_name, run_name ):
 	SNRs = []
 
 	for fname in fitslist:
-
-		projectname = fname.replace( results_dir, '' ).replace( f'_{round(wle*1e6)}um', '').strip('.fits')  	# each one a separate folder
-		img_tab = f'{results_dir}{projectname}/{projectname}.{config_name}.noisy.image'		# cleaned simanalyze image
+		diskname = os.path.basename( fname )	 	# each one in a separate folder
+		img_tab = f'{results_dir}{diskname}/{diskname}.{config_name}.noisy.image'		# cleaned simanalyze image
 		table = cto.table()
 		table.open( img_tab )
 		img = table.getcol('map').squeeze().copy() 
@@ -703,7 +702,7 @@ def assess_SNR( wle, results_dir, config_name, run_name ):
 		# noise = rms( img )				# the rms of the entire image including target source
 
 		snr = peak_beam / noise
-		SNRs.append( [projectname.strip( 'disk' ), snr, peak, peak_beam, noise] )
+		SNRs.append( [diskname.strip( 'disk' ), snr, peak, peak_beam, noise] )
 		table.close()
 
 	df = pd.DataFrame( SNRs, columns=['source', 'SNR', 'max peak', 'beam peak', 'noise']).set_index('source')
