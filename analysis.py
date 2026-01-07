@@ -628,15 +628,6 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 
 
 
-# def crop_image( img, centre=None, margins=[100, 100] ):
-# 	'''Select a subimage of margins pixels around the centre (odd size).'''
-# 	if centre is None:      	# use the middle of the image
-# 		centre = (np.array( img.shape)/2 ).astype(int)
-# 	if margins[0] > min( centre[0], img.shape[0] - centre[0]):
-# 		print( 'margins exceed original image boundary, no crop possible.\n')
-# 		return img
-# 	return img[ centre[0] - margins[0] : centre[0] + margins[0] +1, centre[1] - margins[1] : centre[1] + margins[1] +1]
-
 def circular_region( arr, radius, centre=None):
 	'''
 	Apply a circular mask to arr. Radius in pixel.'''
@@ -776,35 +767,19 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 	return popt
 
 
+def alpha_Menv_plot( ):
 
-# def inspect_plots( two_comp=True, sampler=None, burnin=None, walksigma=4, results_dir=''):
-# 	'''
-# 	inspect MCMC plots (chains + corner).
-# 	'''
-# 	labels_gauss = ['Log($I_0$)', 'Log(Ie)', '$\sigma$', '$i$', 'PA', 'dRA', 'dDec']
-# 	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
-# 	labs_mc = labels_2c if two_comp else labels_gauss
+	data = np.loadtxt( 'alpha37_env.txt')
 
-# 	disklist = sorted( glob.glob( results_dir + 'disk*') )
-# 	if disklist == []:    
-# 		print('NO FILES FOUND, check again the folder path!')
-# 		sys.exit()
-# 	print( len(disklist), 'files found')
-
-# 	for fpath in disklist:
-# 		os.chdir( fpath )
-# 		diskname = fpath.replace( results_dir, '' )
-# 		print( '\nInspecting:  ', diskname)
-# 		# disk_n = int(diskname.strip( '_yzx'))
-# 		# os.chdir( diskname )
-
-# 		if sampler is None:
-# 			sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
-# 		nsteps = sampler.get_chain().shape[0]
-# 		if burnin is None:
-# 			burnin = nsteps//3
-# 		bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=True )
-
+	ptitle = 'spectral index vs M_env'
+	fig, ax = plt.subplots( figsize=(6,4), layout='constrained')
+	ax.plot( data[:,2], data[:,1], label=r'$\alpha$', ls='-')
+	#ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
+	ax.set( xlabel='$ M_\mathrm{env} $ [M$_{\odot}$]', ylabel=r'$\alpha$', title=ptitle) #,  xscale='log', yscale='log', xlim=[1e-4, 20], ylim=[1e-2, 1e5])
+	# ax.legend( loc='lower left')
+	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
+	# plt.show()
+	[fig.savefig( ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 
 
 
@@ -819,6 +794,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 	mpl.style.use('fast')
 
 	def plot_quantity( quant, uvtab):
+
 		if quant=='Re':
 			return uvtab.bin_re
 		elif quant=='Im':
@@ -829,9 +805,9 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 			return np.sqrt( uvtab.bin_im**2 + uvtab.bin_re**2 )
 		
 	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
-	os.chdir( savedir_prefix )			# save plot here
+	#os.chdir( savedir_prefix )			# save plot here
 	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc/'
+	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc_constr/'
 	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
@@ -841,21 +817,25 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 	axes = axes.flatten()
 
 	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
+	a_tab = [] 
+	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	for d in range( n_disks):	# n_disks
 		uvtabs = [0,0,0] ; comptabs = [0,0,0]
 		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"	
 		if int( diskname[4:6]) in targetslist:
 			try:		# Load uvtable using uvplot
-				for i in range(3):
+				for i in range(3):		# iterate on wavelength
 					uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname +'/uvtab.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
 					if model != 'full':
 						mod_vis = [0,0]
 						with open( dirs[i] + diskname + '/visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
 							mod_vis = [np.load( f), np.load( f)] 			# disk_vis, env_vis
 						mod_i = 0 if model == 'env' else 1
-						comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
+						#comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
 						# disktabs[i] = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 )
+						comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], uvtabs[i].re - mod_vis[mod_i].real, uvtabs[i].im - mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
 						comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline)	; comptabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
+						
 						del mod_vis
 					uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline)	; uvtabs[i].uvbin( binsize)
 			except Exception as e:
@@ -863,11 +843,14 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 				continue
 			
 			if model == 'full':
-				q1, q3, q7 = [ plot_quantity( quantity, uvtabs[t]) for t in range(3) ]
+				tab = uvtabs
 			else: # model == 'env':
-				q1 = uvtabs[0].bin_re - comptabs[0].bin_re	# add other quantities choice
-				q3 = uvtabs[1].bin_re - comptabs[1].bin_re 	# 3mm env_re
-				q7 = uvtabs[2].bin_re - comptabs[2].bin_re
+				tab = comptabs		# single component table (uvtab - model)
+			q1, q3, q7 = [ plot_quantity( quantity, tab[t]) for t in range(3) ]
+						
+				# q1 = uvtabs[0].bin_re - comptabs[0].bin_re	# add other quantities choice
+				# q3 = uvtabs[1].bin_re - comptabs[1].bin_re 	# 3mm env_re
+				# q7 = uvtabs[2].bin_re - comptabs[2].bin_re
 			# else: 
 			# 	print( '\nmodel can only be ["full", "disk", "env"], input option not recognised' )
 			uvdist3 = uvtabs[1].bin_uvdist  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
@@ -879,6 +862,9 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 			ratio73 = q3 / q7
 			a13 = - np.log10( ratio31) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
 			a37 = - np.log10( ratio73) / np.log10( 3 / 7 )
+			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun]
+			a_tab.append( [diskname, np.mean( a37[0:3]), M_env ] )			# take the first points for envelope scales
+			# add theoretical alpha
 
 			# fig, axes = plt.subplots()
 			axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
@@ -899,7 +885,9 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
+	np.savetxt( f'alpha37_env.txt', np.reshape( a_tab, (-1,3)) )			# save for M_env - alpha correlation
 	print(' Mega uv plot saved')
+
 
 
 def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targetslist=OKlist):
@@ -1068,15 +1056,15 @@ if __name__=='__main__':
 	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
-	assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	#assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
+	#rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( rdf, run_name=run_suffix )
-	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	# visib_ratios_plot( model='full', quantity='mod')
+	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
+	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	visib_ratios_plot( model='env', quantity='mod', binsize=25e3, targetslist=analist)
 
 
 
