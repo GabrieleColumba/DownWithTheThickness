@@ -238,7 +238,7 @@ def plot_mass_env( df, run_name, ):
 	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
 	'''
 	M_obs = df.Meo
-	M_sim = (df.Mcyl - df.M_sim) /100	# (df.Mcyl - df.M_sim)
+	M_sim = df.Menv/100 # (df.Mcyl - df.M_sim) /100	
 	M_ratio = M_obs / M_sim 
 	# T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
@@ -575,10 +575,10 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 				F_v_simple = gauss_flux_integral( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
 				M_obs_simple = F_v_simple *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
 				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
-				Fv_count = count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
+				Fv_count = 0.1 #count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
 				F_v_thicc = thick_flux( v_obs, dist, R_obs[0], l_star=l_star)			# theoretical fully thick disk flux
 
-				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, R_95, k_obs, l_star)
+				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, Rout, k_obs, l_star)
 
 			except: 
 				print('No bestfit params found for disk', diskID)
@@ -671,7 +671,7 @@ def plot_SNR( df, run_name ):
 	plt.close()
 
 
-def assess_SNR( wle, results_dir, config_name, run_name ):
+def assess_SNR( results_dir, config_name, run_name ):
 	'''
 	Evaluate the SNR of the cleaned image across the entire sample in results_dir. 
 	'''
@@ -681,7 +681,7 @@ def assess_SNR( wle, results_dir, config_name, run_name ):
 
 	for fname in fitslist:
 		diskname = os.path.basename( fname )	 	# each one in a separate folder
-		img_tab = f'{results_dir}{diskname}/{diskname}.{config_name}.noisy.image'		# cleaned simanalyze image
+		img_tab = f'{results_dir}{diskname}/{diskname}.concat.noisy.cms.image'		# cleaned simanalyze image
 		table = cto.table()
 		table.open( img_tab )
 		img = table.getcol('map').squeeze().copy() 
@@ -783,7 +783,7 @@ def alpha_Menv_plot( ):
 
 
 
-def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5e5, targetslist=OKlist):
+def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5e5, targetslist=OKlist):
 	'''
 	Visualise for ALL targets in our sample the ratios of quantity between 1,3,7mm as function of the baseline. 
 	'''
@@ -805,7 +805,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 			return np.sqrt( uvtab.bin_im**2 + uvtab.bin_re**2 )
 		
 	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
-	#os.chdir( savedir_prefix )			# save plot here
+	os.chdir( savedir_prefix )			# save plot here
 	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
 	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc_constr/'
 	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
@@ -863,13 +863,13 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 			a13 = - np.log10( ratio31) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
 			a37 = - np.log10( ratio73) / np.log10( 3 / 7 )
 			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun]
-			a_tab.append( [diskname, np.mean( a37[0:3]), M_env ] )			# take the first points for envelope scales
+			a_tab.append( [int( diskname[4:6]), np.mean( a37[0:3]), M_env ] )			# take the first points for envelope scales
 			# add theoretical alpha
 
 			# fig, axes = plt.subplots()
 			axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
 			axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
-			axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.85 )
+			axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.75 )
 			axes[d].set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; 
 			axes[d].set_title( diskname, fontsize=8)
 
@@ -885,7 +885,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=50e3, max_baseline=5
 	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
-	np.savetxt( f'alpha37_env.txt', np.reshape( a_tab, (-1,3)) )			# save for M_env - alpha correlation
+	np.savetxt( 'alpha37_env.txt', np.reshape( a_tab, (-1,3)) )			# save for M_env - alpha correlation
 	print(' Mega uv plot saved')
 
 
@@ -1056,15 +1056,16 @@ if __name__=='__main__':
 	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
-	#assess_SNR( wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	assess_SNR( results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	#rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
+	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( rdf, run_name=run_suffix )
-	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	visib_ratios_plot( model='env', quantity='mod', binsize=25e3, targetslist=analist)
+	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
+	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	visib_ratios_plot( model='env', quantity='mod', binsize=20e3, targetslist=analist)
+	alpha_Menv_plot()
 
 
 
