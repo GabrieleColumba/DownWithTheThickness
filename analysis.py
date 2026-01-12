@@ -178,9 +178,9 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
 	# fig.suptitle( ptitle )
 	q16, median_r, q84 = np.nanquantile( ratio, [0.16, 0.5, 0.84])
 	hh = ax.hist( x=ratio, bins='doane', color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
-	ax.axvline( x=1, ls='--', lw=2, c='k', alpha=0.99)
-	ax.axvline( x=median_r, ls='-.', lw=1.5, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
-	ax.axvline( x=mean_r, ls=':', c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
+	ax.axvline( x=1, ls='--', lw=2.5, c='k', alpha=0.99)
+	ax.axvline( x=median_r, ls='-.', lw=2, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
+	ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
 		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
 	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=ptitle )
@@ -233,12 +233,12 @@ def thick_sim_inspo( df, k_sim, Tavg, v_obs, run_name):
 	plt.close()
 	
 
-def plot_mass_env( df, run_name, ):
+def plot_mass_env( df, run_name ):
 	'''
 	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
 	'''
 	M_obs = df.Meo
-	M_sim = df.Menv/100 # (df.Mcyl - df.M_sim) /100	
+	M_sim = df.Mes/100 		# (df.Mcyl - df.M_sim) /100	
 	M_ratio = M_obs / M_sim 
 	# T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
@@ -324,8 +324,8 @@ def plot_radius_compare( df, res_limit, run_name, errors=True):
 	else:
 		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.7, zorder=3.7)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
-	ax.text( x=0.01, y=0.85, s=(f'obs/sim accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.1f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
-		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.1f}x'),
+	ax.text( x=0.01, y=0.85, s=(f'obs/sim accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.2f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
+		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.2f}x'),
 		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
 		 title=ptitle, xlim=[0.05,2.4], ylim=[0.05, 2.4], aspect='equal' )
@@ -575,7 +575,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 				F_v_simple = gauss_flux_integral( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
 				M_obs_simple = F_v_simple *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
 				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
-				Fv_count = 0.1 #count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
+				Fv_count = np.nan #count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
 				F_v_thicc = thick_flux( v_obs, dist, R_obs[0], l_star=l_star)			# theoretical fully thick disk flux
 
 				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, Rout, k_obs, l_star)
@@ -767,13 +767,13 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 	return popt
 
 
-def alpha_Menv_plot( ):
+def alpha_Menv_plot( model, quantity):
 
 	data = np.loadtxt( 'alpha37_env.txt')
 
-	ptitle = 'spectral index vs M_env'
+	ptitle = 'spectral index vs M_env' + model + quantity
 	fig, ax = plt.subplots( figsize=(6,4), layout='constrained')
-	ax.plot( data[:,2], data[:,1], label=r'$\alpha$', ls='-')
+	ax.scatter( data[:,2], data[:,1], label=r'$\alpha$')
 	#ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
 	ax.set( xlabel='$ M_\mathrm{env} $ [M$_{\odot}$]', ylabel=r'$\alpha$', title=ptitle) #,  xscale='log', yscale='log', xlim=[1e-4, 20], ylim=[1e-2, 1e5])
 	# ax.legend( loc='lower left')
@@ -794,7 +794,6 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 	mpl.style.use('fast')
 
 	def plot_quantity( quant, uvtab):
-
 		if quant=='Re':
 			return uvtab.bin_re
 		elif quant=='Im':
@@ -817,6 +816,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 	axes = axes.flatten()
 
 	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
+	v_obs = 299792458.0/np.array(wles)
 	a_tab = [] 
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	for d in range( n_disks):	# n_disks
@@ -832,39 +832,30 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 							mod_vis = [np.load( f), np.load( f)] 			# disk_vis, env_vis
 						mod_i = 0 if model == 'env' else 1
 						#comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
-						# disktabs[i] = uvp.UVTable( filename= dirs[i] + diskname+ '/uvtab_disk.txt', wle=wles[i], columns=uvp.COLUMNS_V0 )
 						comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], uvtabs[i].re - mod_vis[mod_i].real, uvtabs[i].im - mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
 						comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline)	; comptabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
-						
 						del mod_vis
 					uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline)	; uvtabs[i].uvbin( binsize)
 			except Exception as e:
 				print(f"\nCould not load uvtable for {diskname}: {e}\n")
 				continue
 			
-			if model == 'full':
-				tab = uvtabs
-			else: # model == 'env':
-				tab = comptabs		# single component table (uvtab - model)
+			tab = uvtabs  if model == 'full'  else comptabs		# single component table (uvtab - model)
 			q1, q3, q7 = [ plot_quantity( quantity, tab[t]) for t in range(3) ]
-						
-				# q1 = uvtabs[0].bin_re - comptabs[0].bin_re	# add other quantities choice
-				# q3 = uvtabs[1].bin_re - comptabs[1].bin_re 	# 3mm env_re
-				# q7 = uvtabs[2].bin_re - comptabs[2].bin_re
-			# else: 
-			# 	print( '\nmodel can only be ["full", "disk", "env"], input option not recognised' )
+
 			uvdist3 = uvtabs[1].bin_uvdist  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
 			# q3 = qty # np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
-			q1 = Akima1DInterpolator( uvtabs[0].bin_uvdist, q1 )( uvdist3 )	# interpolate the real part where the ref value are binned
-			q7 = Akima1DInterpolator( uvtabs[2].bin_uvdist, q7 )( uvdist3 )	#  np.arctan2( uvtab1.bin_im ,
+			q1 = Akima1DInterpolator( uvtabs[0].bin_uvdist, q1 )( uvdist3 )		# interpolate at uvdist3 points, where the ref value are binned
+			q7 = Akima1DInterpolator( uvtabs[2].bin_uvdist, q7 )( uvdist3 )
 			# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
-			ratio31 = q1 / q3
-			ratio73 = q3 / q7
-			a13 = - np.log10( ratio31) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
-			a37 = - np.log10( ratio73) / np.log10( 3 / 7 )
-			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun]
-			a_tab.append( [int( diskname[4:6]), np.mean( a37[0:3]), M_env ] )			# take the first points for envelope scales
+			ratio13 = q1 / q3
+			ratio37 = q3 / q7
+			a13 = - np.log10( ratio13) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
+			a37 = - np.log10( ratio37) / np.log10( 3 / 7 )
+			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun] mass within 1000 au excluding disk
+			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[0:3]), M_env ] )			# take the first points for envelope scales
 			# add theoretical alpha
+			# a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=temp_profile_Tung) / planck_bbody( v_obs[2], T=temp_profile_Tung)) / np.log10( v_obs[1] / v_obs[2] )		# theoretical spectral index (beta=1.52)
 
 			# fig, axes = plt.subplots()
 			axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
@@ -1056,16 +1047,16 @@ if __name__=='__main__':
 	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
-	assess_SNR( results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	#assess_SNR( results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
+	#rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( rdf, run_name=run_suffix )
-	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	visib_ratios_plot( model='env', quantity='mod', binsize=20e3, targetslist=analist)
-	alpha_Menv_plot()
+	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
+	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=1e5, targetslist=analist)
+	alpha_Menv_plot( model='env', quantity='mod' )
 
 
 
