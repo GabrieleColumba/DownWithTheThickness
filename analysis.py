@@ -806,7 +806,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
 	os.chdir( savedir_prefix )			# save plot here
 	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = savedir_prefix + '3mm/run_1800s_2c_xsrc/'
+	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc_constr/'
 	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
@@ -869,12 +869,12 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 			del uvtabs, comptabs, q1, q3, q7
 			# plt.show()
 	
-	def klambda_to_au(x): return 1.22/x * dist.to_value(u.au)
+	def klambda_to_au(x): return 1.22/x * dist.to_value(u.au)		# add a physical ruler for size understanding
 	def au_to_klambda(x): return 1.22/x * dist.to_value(u.au)
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
-	for ax in axes[:n_disks]:
+	for i, ax in enumerate( axes.reshape(nrows, ncols)[0, :]):
 		ax_top = ax.secondary_xaxis( 'top', functions=(klambda_to_au, au_to_klambda))
-		ax_top.set_xlabel('physical scale [au]')
+		if i==int(ncols/2): ax_top.set_xlabel('physical scale [au]')
 	
 	supylab = r'$\alpha$ index'	# 'Re(V) [Jy]'
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
