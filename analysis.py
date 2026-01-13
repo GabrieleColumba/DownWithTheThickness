@@ -806,7 +806,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
 	os.chdir( savedir_prefix )			# save plot here
 	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc_constr/'
+	resdir_3mm = savedir_prefix + '3mm/run_1800s_2c_xsrc/'
 	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
@@ -854,11 +854,13 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 			a37 = - np.log10( ratio37) / np.log10( 3 / 7 )
 			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun] mass within 1000 au excluding disk
 			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[0:3]), M_env ] )			# take the first points for envelope scales
-			# add theoretical alpha
-			# a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=temp_profile_Tung) / planck_bbody( v_obs[2], T=temp_profile_Tung)) / np.log10( v_obs[1] / v_obs[2] )		# theoretical spectral index (beta=1.52)
+			# add theoretical spectral index (beta=1.52)
+			T_profile = temp_profile_Tung( lum=truths_df.loc[int( diskname[4:6])][['L_acc', 'L_int']].sum(), r=(1.22/uvdist3/2 * dist).to_value(u.au) )			# T(uvdist)
+			a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=T_profile) / planck_bbody( v_obs[2], T=T_profile)) / np.log10( v_obs[1] / v_obs[2] )
 
 			# fig, axes = plt.subplots()
-			axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
+			# axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
+			axes[d].plot( uvdist3 *1e-3, a37_theor, c='grey', ls='--', label='theoretical $\alpha_{3/7}$' )
 			axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
 			axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.75 )
 			axes[d].set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; 
@@ -1055,8 +1057,8 @@ if __name__=='__main__':
 	# plot_correlations( rdf, run_name=run_suffix )
 	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
 	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=1e5, targetslist=analist)
-	alpha_Menv_plot( model='env', quantity='mod' )
+	visib_ratios_plot( model='full', quantity='mod', binsize=10e3, max_baseline=1e5, targetslist=analist)
+	alpha_Menv_plot( model='full', quantity='mod' )
 
 
 
@@ -1079,35 +1081,6 @@ if __name__=='__main__':
 # ax.scatter(  rdf.Mcyl , rdf.Fv_env, alpha=0.7 )
 # [ax.text( s=rdf.index[i], x=rdf.Mcyl[i],  y=rdf.Fv_env[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
 # ax.set(  xlabel= ' Menv', xscale='log', ylabel= ' Fv_env', yscale='log')
-# # fig.supylabel( r'$\delta_M$', fontsize=12 )
-# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-# plt.show()
-
-# fig, ax = plt.subplots( )
-# fig.suptitle( ptitle )
-# ax.scatter(  rdf.M_sim , rdf.Fv_env, alpha=0.7 )
-# [ax.text( s=rdf.index[i], x=rdf.M_sim[i],  y=rdf.Fv_env[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
-# ax.set(  xlabel= ' Menv', xscale='log', ylabel= ' Fv_env', yscale='log')
-# # fig.supylabel( r'$\delta_M$', fontsize=12 )
-# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-# plt.show()
-
-# M_envsim = rdf.Mcyl - rdf.M_sim		# non grandché
-
-# fig, ax = plt.subplots( )
-# fig.suptitle( ptitle )
-# ax.scatter(  M_envsim , rdf.Fv_env, alpha=0.7 )
-# [ax.text( s=rdf.index[i], x=M_envsim[i],  y=rdf.Fv_env[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
-# ax.set(  xlabel= ' Menv', xscale='log', ylabel= ' Fv_env', yscale='log')
-# # fig.supylabel( r'$\delta_M$', fontsize=12 )
-# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-# plt.show()
-
-# fig, ax = plt.subplots( )
-# fig.suptitle( ptitle )
-# ax.scatter(  M_envsim , rdf.Meo, alpha=0.7 )
-# [ax.text( s=rdf.index[i], x=M_envsim[i],  y=rdf.Meo[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
-# ax.set(  xlabel= ' Menv', xscale='log', ylabel= 'M_env_obs', yscale='log')
 # # fig.supylabel( r'$\delta_M$', fontsize=12 )
 # # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 # plt.show()
