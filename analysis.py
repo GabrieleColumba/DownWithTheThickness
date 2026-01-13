@@ -853,23 +853,29 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 			a13 = - np.log10( ratio13) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
 			a37 = - np.log10( ratio37) / np.log10( 3 / 7 )
 			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun] mass within 1000 au excluding disk
-			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[0:3]), M_env ] )			# take the first points for envelope scales
-			# add theoretical spectral index (beta=1.52)
+			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[0:4]), M_env ] )			# take the first points for envelope scales
+			# add theoretical spectral index (beta=1.52 from optool opacity)
 			T_profile = temp_profile_Tung( lum=truths_df.loc[int( diskname[4:6])][['L_acc', 'L_int']].sum(), r=(1.22/uvdist3/2 * dist).to_value(u.au) )			# T(uvdist)
 			a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=T_profile) / planck_bbody( v_obs[2], T=T_profile)) / np.log10( v_obs[1] / v_obs[2] )
 
 			# fig, axes = plt.subplots()
 			# axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
-			axes[d].plot( uvdist3 *1e-3, a37_theor, c='grey', ls='--', label='theoretical $\alpha_{3/7}$' )
+			axes[d].plot( uvdist3 *1e-3, a37_theor, c='grey', ls='--', label=r'theoretical $\alpha_{3-7mm}$' )
 			axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
 			axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.75 )
-			axes[d].set( xscale='log') #, yscale='log')#, ylim=[1e-1,1e3]) ; 
+			axes[d].set( xscale='log',  ylim=[1,4]) #, yscale='log')#, ylim=[1e-1,1e3]) ; 
 			axes[d].set_title( diskname, fontsize=8)
 
 			del uvtabs, comptabs, q1, q3, q7
 			# plt.show()
-
+	
+	def klambda_to_au(x): return 1.22/x * dist.to_value(u.au)
+	def au_to_klambda(x): return 1.22/x * dist.to_value(u.au)
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
+	for ax in axes[:n_disks]:
+		ax_top = ax.secondary_xaxis( 'top', functions=(klambda_to_au, au_to_klambda))
+		ax_top.set_xlabel('physical scale [au]')
+	
 	supylab = r'$\alpha$ index'	# 'Re(V) [Jy]'
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
 	fig.supylabel( supylab, weight='bold', x=0.08, fontsize=12 )
