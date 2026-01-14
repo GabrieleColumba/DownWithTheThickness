@@ -305,25 +305,35 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	if not simple_M: ratio_histogram( df.M_obs, df.M_sim/100, run_name, histcolor='tab:red')
 
 
-def plot_radius_compare( df, res_limit, run_name, errors=True):
+def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
 	'''
-	Assuming R_obs is R_90, in [au]. 
+	Assuming R_obs is R_95, in [au] if r95=True, else R_90. 
 	'''
-	r_ratio_90 = df.R_obs / df.R_sim			# accuracy_ratio( df.R_obs, df.R_sim )
-	r_ratio_95 = r_ratio_90 *1.14
+	if r95:
+		R_95 = df.R_obs
+		R_90 = df.R_obs / 1.1408
+		not_R_obs = R_90
+		lab_err = '$R_{95\%}$' ; lab_sca = '$R_{90\%}$'
+	else: 
+		R_95 = df.R_obs * 1.1408
+		R_90 = df.R_obs 
+		not_R_obs = R_95
+		lab_err = '$R_{90\%}$' ; lab_sca = '$R_{95\%}$'
+	r_ratio_90 = R_90 / df.R_sim 			# accuracy_ratio( df.R_obs, df.R_sim )
+	r_ratio_95 = R_95 / df.R_sim 
 	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
 
 	ptitle = 'Radius comparison' + run_name
 	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
 	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
-	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
+	#ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
 	if errors:
 		scatter_with_errors( ax=ax, x=df.R_sim *au_to_as, y=df.R_obs*au_to_as, y_lo=df.R_obs_lo*au_to_as, y_up=df.R_obs_up*au_to_as,
-					fmt='o', facecolor='g', label='$R_{90\%}$', marker_alpha=0.7 )
+					fmt='o', facecolor='g', label=lab_err, marker_alpha=0.7 )
 	else:
-		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label='$R_{90\%}$', alpha=0.7, zorder=3.7)		# observed radii
-	ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs*1.14 *au_to_as, marker='o', c='b', label='$R_{95\%}$', alpha=0.2)
+		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label=lab_err, alpha=0.7, zorder=3.7)		# observed radii
+	ax.scatter( x=df.R_sim *au_to_as, y=not_R_obs *au_to_as, marker='o', c='b', label=lab_sca, alpha=0.2)
 	ax.text( x=0.01, y=0.85, s=(f'obs/sim accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.2f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
 		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.2f}x'),
 		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
@@ -535,7 +545,7 @@ def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
 	return Mtot, dF_grid.sum( axis=0) 
 
 
-def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=122, figures=True):
+def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=122, r95=True, figures=True):
 	'''
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
@@ -569,13 +579,13 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
 				R_90 = R_68 * 1.42                              # 90% radius
 				R_95 = R_68 * 1.62
-				R_obs = R_90     # as Tung 
+				R_obs = R_95 if r95 else R_90    # unlike Tung who used 90%
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
 
 				F_v_simple = gauss_flux_integral( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
 				M_obs_simple = F_v_simple *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
 				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
-				Fv_count = np.nan #count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
+				Fv_count = count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
 				F_v_thicc = thick_flux( v_obs, dist, R_obs[0], l_star=l_star)			# theoretical fully thick disk flux
 
 				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, Rout, k_obs, l_star)
@@ -621,7 +631,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 		plot_mass_compare( res_df, run_name, T_avg, simple_M=True ) ; plot_mass_compare( res_df, run_name, T_avg, simple_M=False )
 		plot_mass_env( res_df, run_name )
 		theta = alma_resolution( wle=wle, config_name=config_name)
-		plot_radius_compare( res_df, theta, run_name )
+		plot_radius_compare( res_df, theta, run_name, r95=r95 )
 		# thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
 		plt.close() 
 	return res_df
@@ -1043,6 +1053,7 @@ if __name__=='__main__':
 	parser.add_argument('-fullsamp', action='store_true', help='analyse all OK targets (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
 	parser.add_argument('-Tavg', type=int, default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
+	parser.add_argument('-r90', action='store_true', help='use R_90 as obs radius (default: R_95)')
 	# parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
 	args = vars( parser.parse_args() )
 
@@ -1057,14 +1068,15 @@ if __name__=='__main__':
 
 	#assess_SNR( results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	#rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix, T_avg=args['Tavg'], figures=True )
+	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
+					  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( rdf, run_name=run_suffix )
 	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
 	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	visib_ratios_plot( model='full', quantity='mod', binsize=10e3, max_baseline=1e5, targetslist=analist)
-	alpha_Menv_plot( model='full', quantity='mod' )
+	# visib_ratios_plot( model='full', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
+	# alpha_Menv_plot( model='full', quantity='mod' )
 
 
 
