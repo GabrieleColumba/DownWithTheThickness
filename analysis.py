@@ -813,10 +813,10 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 		elif quant=='mod':
 			return np.sqrt( uvtab.bin_im**2 + uvtab.bin_re**2 )
 		
-	# prefix =  '/home/PERSONALE/gabriele.columba/run/results/' # '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
+	# savedir_prefix =  '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
 	os.chdir( savedir_prefix )			# save plot here
 	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc_constr/'
+	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc/'
 	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
@@ -850,13 +850,14 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 				print(f"\nCould not load uvtable for {diskname}: {e}\n")
 				continue
 			
-			tab = uvtabs  if model == 'full'  else comptabs		# single component table (uvtab - model)
-			q1, q3, q7 = [ plot_quantity( quantity, tab[t]) for t in range(3) ]
+			tabs = uvtabs  if model == 'full'  else comptabs		# single component table (uvtab - model)
+			q1, q3, q7 = [ plot_quantity( quantity, tabs[t]) for t in range(3) ]
 
-			uvdist3 = uvtabs[1].bin_uvdist  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+			uvdist3 = tabs[1].bin_quantity( tabs[1].uvdist)[0]  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+			uvdist3[ np.isclose( uvdist3, 0) ] = np.nan
 			# q3 = qty # np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
-			q1 = Akima1DInterpolator( uvtabs[0].bin_uvdist, q1 )( uvdist3 )		# interpolate at uvdist3 points, where the ref value are binned
-			q7 = Akima1DInterpolator( uvtabs[2].bin_uvdist, q7 )( uvdist3 )
+			q1 = Akima1DInterpolator( tabs[0].bin_uvdist, q1 )( uvdist3 )		# interpolate at uvdist3 points, where the ref value are binned
+			q7 = Akima1DInterpolator( tabs[2].bin_uvdist, q7 )( uvdist3 )
 			# re1[re1 <= 0] = np.nan ; re7[re7 <= 0] = np.nan ; 		# disregard negative Re fluxes
 			ratio13 = q1 / q3
 			ratio37 = q3 / q7
@@ -878,9 +879,10 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 
 			del uvtabs, comptabs, q1, q3, q7
 			# plt.show()
-	
-	def klambda_to_au(x): return 1.22/x * dist.to_value(u.au)		# add a physical ruler for size understanding
-	def au_to_klambda(x): return 1.22/x * dist.to_value(u.au)
+
+	def klambda_to_au(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# add a physical ruler for size understanding
+	def au_to_klambda(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# 1e-3 I guess because the first xaxis is in klambda
+
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
 	for i, ax in enumerate( axes.reshape(nrows, ncols)[0, :]):
 		ax_top = ax.secondary_xaxis( 'top', functions=(klambda_to_au, au_to_klambda))
@@ -1068,15 +1070,15 @@ if __name__=='__main__':
 
 	#assess_SNR( results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
-					  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	# rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
+	#				  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( rdf, run_name=run_suffix )
 	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
 	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	# visib_ratios_plot( model='full', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
-	# alpha_Menv_plot( model='full', quantity='mod' )
+	visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
+	alpha_Menv_plot( model='full', quantity='mod' )
 
 
 
