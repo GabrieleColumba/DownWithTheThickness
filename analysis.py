@@ -460,7 +460,7 @@ def produce_truths_df():
 		disks[k] = hf.attrs[k]
 
 	Rsim = []; Rmean=[]; Msim = []; Mcyl =[]; Lint = []; Lacc = []; dTemp1 = []; dTemp2 = []; multip =[]; 
-	angs_x = []; angs_y = []; angs_z = []; hr = []; Mstar = []; age =[]; Menv = [] 
+	angs_x = []; angs_y = []; angs_z = []; hr = []; Mstar = []; age =[]; Menv = [] ; M1000 = []
 	ids = disks['list_of_disks']
 
 	for i_d in ids:
@@ -472,8 +472,9 @@ def produce_truths_df():
 		Rsim.append( disks[prefix + '_radius'] )
 		# Rmean.append( disks[prefix + '_mean_radius'] )	# useless
 		Msim.append( disks[prefix + '_mass'] )				# disk mass
-		Mcyl.append( disks[prefix + '_mass_cyl'] )			# env mass ?
-		Menv.append( disks[prefix + '_mass_env_1000'] )		# env mass ?
+		Mcyl.append( disks[prefix + '_mass_cyl'] )			# mass inside the disk cylinder
+		Menv.append( disks[prefix + '_mass_env_1000'] )		# env mass 
+		#M1000.append( disks[prefix + '_mass_1000'] )		# M1000 = Menv + Mdisk
 		Lint.append( disks[prefix + '_star_lum'] )
 		Lacc.append( disks[prefix + '_star_acclum'] )
 		dTemp1.append( disks[prefix + '_Temp_mid'] )		# mid, mavg o simple ?
@@ -483,8 +484,8 @@ def produce_truths_df():
 		Mstar.append( disks[prefix + '_sink_mass'] )		# star mass
 		age.append( disks[prefix + '_sink_age'] )
 
-	dfT = pd.DataFrame( np.array([Msim, Mcyl, Menv, Rsim, Rmean, Lint, Lacc, dTemp1, dTemp2, multip, hr, Mstar, age, angs_x, angs_y, angs_z]).T, 
-		columns=['M_disk', 'M_cyl', 'M_env', 'R_disk', 'R_mean', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'multiplicity', 'hr', 'M_star', 'age', 'i_yz', 'i_xz', 'i_xy'], index=ids)
+	dfT = pd.DataFrame( np.array([Msim, Mcyl, Menv, Rsim, Lint, Lacc, dTemp1, dTemp2, multip, Mstar, age, angs_x, angs_y, angs_z]).T, 
+		columns=['M_disk', 'M_cyl', 'M_env', 'R_disk', 'L_int', 'L_acc', 'Tmid_disk', 'Tmavg_disk', 'multiplicity', 'M_star', 'age', 'i_yz', 'i_xz', 'i_xy'], index=ids)
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
@@ -781,7 +782,7 @@ def alpha_Menv_plot( model, quantity):
 
 	data = np.loadtxt( 'alpha37_env.txt')
 
-	ptitle = 'spectral index vs M_env' + model + quantity
+	ptitle = 'spectral index vs M_env' + f'-{model}-{quantity}'
 	fig, ax = plt.subplots( figsize=(6,4), layout='constrained')
 	ax.scatter( data[:,2], data[:,1], label=r'$\alpha$')
 	#ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
@@ -864,7 +865,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 			a13 = - np.log10( ratio13) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
 			a37 = - np.log10( ratio37) / np.log10( 3 / 7 )
 			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun] mass within 1000 au excluding disk
-			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[0:4]), M_env ] )			# take the first points for envelope scales
+			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[1:5]), M_env ] )			# take the first points for envelope scales
 			# add theoretical spectral index (beta=1.52 from optool opacity)
 			T_profile = temp_profile_Tung( lum=truths_df.loc[int( diskname[4:6])][['L_acc', 'L_int']].sum(), r=(1.22/uvdist3/2 * dist).to_value(u.au) )			# T(uvdist)
 			a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=T_profile) / planck_bbody( v_obs[2], T=T_profile)) / np.log10( v_obs[1] / v_obs[2] )
@@ -1079,6 +1080,11 @@ if __name__=='__main__':
 	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 	visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
 	alpha_Menv_plot( model='full', quantity='mod' )
+
+	for mod in ['full','env']:
+                for q in ['Re','mod']:
+                        visib_ratios_plot( model=mod, quantity=q, binsize=10e3, max_baseline=2e5, targetslist=analist)
+                        alpha_Menv_plot( model=mod, quantity=q )
 
 
 
