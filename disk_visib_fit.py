@@ -27,8 +27,11 @@ if __name__=='__main__':
 
 	model_comps = '2c' if args['2c'] else '1c'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
-	config_name = 'alma.cycle' + args["config"]
-	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
+	config_name = 'alma.cycle' + args["config"]		# main antenna configuration (disk oriented)
+	wle = float(args["RT_wavel"]) /1e6				# [m]	assuming wle is exact as names
+	cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }			# compact configuration for each wavelength
+	cc_name = f'alma.cycle11.{cc_dict[wle]}'	
+	config_list = [config_name, cc_name] if args['compconf']==True else [config_name]
 	folder_wle = f'{round(wle*1e3)}mm/'
 	data_path  = data_prefix + folder_wle
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/'		# results directory name
@@ -66,7 +69,7 @@ if __name__=='__main__':
 		if args["replot_only"]:	
 			diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')		# for single disk names
 			#diskname = fname.replace( savedir, '' )															# for array sbatch runs
-			MSname = f'{diskname}.{config_name}.noisy.ms' if not args['compconf'] else f'{diskname}.concat.noisy.cms'
+			MSname = f'{diskname}.{config_name}.noisy.ms' # if not args['compconf'] else f'{diskname}.concat.noisy.cms'
 			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, MSname=MSname )
 			sys.exit()		# replot and terminate before regressions
 
@@ -75,8 +78,8 @@ if __name__=='__main__':
 			print('Skipping NO-FIT target: ', fname , '\n')
 		else:
 			print( '\nRunning for: \t', diskname )
-			MSname = f'{diskname}.{config_name}.noisy.ms' if not args['compconf'] else f'{diskname}.concat.noisy.cms'
+			MSname = f'{diskname}.{config_name}.noisy.ms' # if not args['compconf'] else f'{diskname}.concat.noisy.cms'
 			perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-					data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name, compact_config=args['compconf'] )
+					data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
 			mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
 					Ncpu=Ncpu, savedir=savedir, nRMS=args['nRMS'], wle=wle, MSname=MSname)

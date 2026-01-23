@@ -107,6 +107,8 @@ def galario_model( pars, galargs, two_comp=True):
 	returns: target_model (only target), chi2, vis_model (target)
 	'''
 	Rmin, dR, nR, nxy, dxy, u, v, Re, Im, w = galargs
+	# Rmin_c, dR_c, nR_c, nxy_c, dxy_c, u_c, v_c, Re_c, Im_c, w_c = galargs[1]	# CC
+	# dR = min( dR, dR_c) ; nR = max( nR, nR_c)
 	if two_comp:
 		LI0d, LI0e, sigma, Ri, Rout_Ri, p_index, inc, PA, dRA, dDec = pars	
 		I0e = 10.**LI0e ; Ri *= arcsec ; Rout = Rout_Ri * Ri 		# Rout *= arcsec
@@ -184,7 +186,7 @@ def copy_extra_sources( MSname, nRMS, deconvmod=True ):
 		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )
 		ax.imshow( np.where(label_image==target_idx, 1, np.nan), origin='lower', cmap='bwr_r')			# mark the target position
 		ax.set_axis_off()
-		fig.savefig( 'sky_xsrc_map' + fig_ext, bbox_inches='tight', dpi=300)
+		fig.savefig( 'sky_xsrc_map' + MSname.strip('image') + fig_ext, bbox_inches='tight', dpi=300)
 		plt.close()
 	else: 
 		print( '\nNo extra sources found in the image!\n' )
@@ -215,8 +217,9 @@ def xsrc_to_visib( extra_sources, u, v ):
 
 def log_likelihood( pars, galargs, two_comp): 
 	'''Galario fit chi2 likelihood function'''
-	chi2 = galario_model( pars=pars, galargs=galargs, two_comp=two_comp )[1]
-	return -0.5 * chi2
+	chi2 = galario_model( pars=pars, galargs=galargs[0], two_comp=two_comp )[1]
+	chi2_c = galario_model( pars=pars, galargs=galargs[1], two_comp=two_comp )[1]
+	return -0.5 * (chi2 + chi2_c)
 
 def log_prior( pars, p_ranges, two_comp): 
 	''' prior dist. pars is the array of free parameters, p_ranges their boundaries'''
@@ -264,7 +267,7 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
 	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
 	# sampler.reset()
-	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True, thin=4)			# full production run
+	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True, thin=2)			# full production run
 	return sampler
 
 
@@ -511,7 +514,7 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	plt.close()
 
 
-def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3, config_name='', compact_config=True):
+def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', damp=False, monosource=True, nRMS=1, vistab_export=True, wle=mm3, config_name=['']):
 	'''
 	Call CASA simobserve and simanalyze to produce mock observations of filename.
 	'''
@@ -522,115 +525,128 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 
 	# Generate synthetic visibilities
 	diskname = filename.replace( data_folder, '' ).replace(f'_{round(wle*1e6)}um', '').strip('.fits')  	# each one a separate folder
-	MSname = f'{diskname}.{config_name}.noisy.ms'
-	os.chdir( '../' )
-	try:
-		ctk.simobserve( project=diskname ,
-			skymodel= f'{diskname}/skymodel.imag' ,
-			setpointings= False,  
-			ptgfile= ptgfile, 
-			incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
-			inwidth = '7.5GHz' ,
-			# mapsize=[ '' ] , # ' ' will fully cover (sky) model
-			antennalist= config_name + '.cfg',
-			totaltime= f'{T_exp}s' ,
-			thermalnoise= 'tsys-atm',
-			user_pwv= 0.7 if wle<2e-3 else 5.186,  # 5.186,      # 5.186 @ 3 & 7mm, 0.7 @ 1mm
-			overwrite = False,
-			graphics= 'file')
-		plt.close()
-
-		if compact_config:
-			cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }		# compact configuration for each wavelength
-			cc_name = f'alma.cycle11.{cc_dict[wle]}'
+	for config in config_name:	# list of configurations, iterate on each
+		MSname = f'{diskname}.{config}.noisy.ms'
+		os.chdir( '../' )
+		try:
 			ctk.simobserve( project=diskname ,
 				skymodel= f'{diskname}/skymodel.imag' ,
 				setpointings= False,  
 				ptgfile= ptgfile, 
 				incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
 				inwidth = '7.5GHz' ,
-				antennalist= cc_name + '.cfg',	
+				# mapsize=[ '' ] , # ' ' will fully cover (sky) model
+				antennalist= config + '.cfg',
 				totaltime= f'{T_exp}s' ,
 				thermalnoise= 'tsys-atm',
-				user_pwv= 0.7 if wle<2e-3 else 5.186,   # 5.186 @ 3 & 7mm, 0.7 @ 1mm
-				overwrite = False,
-				graphics= 'file') 
-			
-			conc_name = f'{diskname}.concat.noisy.cms'
-			ctk.virtualconcat( vis=[ f'{diskname}/{MSname}', f'{diskname}/{diskname}.{cc_name}.noisy.ms'], concatvis= f'{diskname}/{conc_name}')		# merge both MS into one
-			MSname = conc_name
-			os.system( f'rm -rf {diskname}/{diskname}.*.ms')		# delete the ideal MSs that we do not use
-
-		# Image and analyze the simulated visibilities
-		ctk.simanalyze( project=diskname ,
-			vis= f'{diskname}/{MSname}', 
-			imsize = [0,0] , 	# [0 ,0] means model image will be matched
-			cell= '' , 			# empty string means model cell size is to be used
-			niter = 10000,
-			interactive = False ,
-			threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
-			weighting = 'briggs',
-			analyze= False,
-			graphics= 'file')
-		# ctk.tclean(		# image the best model !
-		# 	vis= MSname,
-		# 	imagename='./bestmod/best_model',
-		# 	datacolumn='corrected',  		# Use the corrected_data where we stored the model visibilities
-		# 	imsize= noisy_img.shape,	
-		# 	cell = f'{pixscale}rad',
-		# 	phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
-		# 	weighting='briggs', deconvolver='clark', 
-		# 	niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
-		# 	) 
-		plt.close()
-	
-	except Exception as e: 
-		print( 'Exception:', e)
-		print( '\nSimobserve/analyze already performed, proceeding\n')
-	
-	os.chdir( diskname )
-	if monosource==False:
-		MSname = f'{diskname}.concat.noisy.cms' if compact_config else f'{diskname}.{config_name}.noisy.ms'
-		extra_sources = copy_extra_sources( MSname, nRMS=nRMS )
-		if np.any( extra_sources[0]):
-			print('\n  Subtracting EXTRA SOURCES from MOCK-OBS visibilities!  \n')
-			casa_table = cto.table()
-			casa_table.open( MSname, nomodify=False )
-			if not (casa_table.getcol('DATA') == casa_table.getcol('CORRECTED_DATA') ).all():
-				print( '\nThis better NOT be the first run for this target!!\n')
-			u, v = casa_table.getcol('UVW')[[0,1]] / wle
-			vis_extra = xsrc_to_visib( extra_sources=extra_sources, u=u, v=v )
-			corr_data = casa_table.getcol('DATA')				# copy original data
-			corr_data[:] = corr_data[:] - vis_extra				# subtracted visibilities broadcasted to correct shape
-			casa_table.putcol( 'CORRECTED_DATA', corr_data )	# here for uvtable export
-			# casa_table.putcol( 'MODEL_DATA', corr_data )		# here for backup ?
-			casa_table.flush() ; casa_table.close()
-
-			ctk.tclean(		# image the subtracted data !
-				vis= MSname, imagename='./xsrc_sub/rough', datacolumn='corrected', 
-				imsize=extra_sources[0].shape, cell = f'{extra_sources[1]}rad',
-				phasecenter='ICRS 16h26m28.2s  -24d24m06.12s', #deconvolver='clark', 
-				weighting='briggs', niter=50, nsigma=3, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
-			
-			casa_table.open( './xsrc_sub/rough.image' )		# the one created above, in [Jy/beam]
-			img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
-			casa_table.close()
-			ptitle = 'Target - xsrc (quick clean)' 
-			fig, ax = plt.subplots( figsize=(6,6))  
-			ci = ax.imshow( img.T , origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=1e-6, vmax=None, clip=True) )    # transpose to have as sky model
-			ax.set( title=ptitle, ) ; ax.axis( 'off' )
-			fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
-			fig.savefig( ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=200)
+				user_pwv= 0.7 if wle<2e-3 else 5.186,  # 5.186,      # 5.186 @ 3 & 7mm, 0.7 @ 1mm
+				overwrite = True,
+				graphics= 'file')
 			plt.close()
-			
-	if vistab_export:				# export the CASA MS to UV table suited for GALARIO
-		# ctk.split( vis= vistab_name, keepflags=False, outputvis=vistab_name + '.binned', timebin='30s', datacolumn='all')
-		casa_table = cto.table()
-		casa_table.open( MSname ) #  + '.binned' )
-		uvp.io.export_uvtable( 'uvtab.txt', tb=casa_table, vis=MSname, datacolumn='CORRECTED_DATA') 
-		casa_table.close()
 
-	print( '\nMock observation completed !\n')
+			# if compact_config:
+
+			# 	ctk.simobserve( project=diskname ,
+			# 		skymodel= f'{diskname}/skymodel.imag' ,
+			# 		setpointings= False,  
+			# 		ptgfile= ptgfile, 
+			# 		incenter= f'{299792458.0/wle}Hz' ,		# v = c / lambda
+			# 		inwidth = '7.5GHz' ,
+			# 		antennalist= cc_name + '.cfg',	
+			# 		totaltime= f'{T_exp}s' ,
+			# 		thermalnoise= 'tsys-atm',
+			# 		user_pwv= 0.7 if wle<2e-3 else 5.186,   # 5.186 @ 3 & 7mm, 0.7 @ 1mm
+			# 		overwrite = True,
+			# 		graphics= 'file') 
+				
+			# 	ctk.simanalyze( project=diskname ,
+			# 	vis= f'{diskname}/{diskname}.{cc_name}.noisy.ms', 
+			# 	imsize = [0,0] , 	# [0 ,0] means model image will be matched
+			# 	cell= '' , 			# empty string means model cell size is to be used
+			# 	niter = 10000,
+			# 	interactive = False ,
+			# 	threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
+			# 	weighting = 'briggs',
+			# 	analyze= False,
+			# 	graphics= 'file')
+				
+				# conc_name = f'{diskname}.concat.noisy.cms'
+				# ctk.virtualconcat( vis=[ f'{diskname}/{MSname}', f'{diskname}/{diskname}.{cc_name}.noisy.ms'], concatvis= f'{diskname}/{conc_name}')		# merge both MS into one
+				# MSname = conc_name
+				# # os.system( f'rm -rf {diskname}/{diskname}.*.ms')		# delete the ideal MSs that we do not use
+
+			# Image and analyze the simulated visibilities
+			ctk.simanalyze( project=diskname ,
+				vis= f'{diskname}/{MSname}', 
+				imsize = [0,0] , 	# [0 ,0] means model image will be matched
+				cell= '' , 			# empty string means model cell size is to be used
+				niter = 10000,
+				interactive = False ,
+				threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
+				weighting = 'briggs',
+				analyze= False,
+				graphics= 'file')
+			# ctk.tclean(		# image the best model !
+			# 	vis= MSname,
+			# 	imagename='./bestmod/best_model',
+			# 	datacolumn='corrected',  		# Use the corrected_data where we stored the model visibilities
+			# 	imsize= noisy_img.shape,	
+			# 	cell = f'{pixscale}rad',
+			# 	phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
+			# 	weighting='briggs', deconvolver='clark', 
+			# 	niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
+			# 	) 
+			plt.close()
+		
+		except Exception as e: 
+			print( 'Exception:', e)
+			print( '\nSimobserve/analyze already performed, proceeding\n')
+		
+		os.chdir( diskname )
+		if monosource==False:
+			# MSname = f'{diskname}.{config_name}.noisy.ms'
+			extra_sources = copy_extra_sources( MSname, nRMS=nRMS )
+			if np.any( extra_sources[0]):
+				print('\n  Subtracting EXTRA SOURCES from MOCK-OBS visibilities!  \n')
+				casa_table = cto.table()
+				casa_table.open( MSname, nomodify=False )
+				if not (casa_table.getcol('DATA') == casa_table.getcol('CORRECTED_DATA') ).all():
+					print( '\nThis better NOT be the first run for this target!!\n')
+				u, v = casa_table.getcol('UVW')[[0,1]] / wle
+				vis_extra = xsrc_to_visib( extra_sources=extra_sources, u=u, v=v )
+				corr_data = casa_table.getcol('DATA')				# copy original data
+				corr_data[:] = corr_data[:] - vis_extra				# subtracted visibilities broadcasted to correct shape
+				casa_table.putcol( 'CORRECTED_DATA', corr_data )	# here for uvtable export
+				# casa_table.putcol( 'MODEL_DATA', corr_data )		# here for backup ?
+				casa_table.flush() ; casa_table.close()
+
+				ctk.tclean(		# image the subtracted data !
+					vis= MSname, imagename=f'./xsrc_sub/{config}_rough', datacolumn='corrected', 
+					imsize=extra_sources[0].shape, cell = f'{extra_sources[1]}rad',
+					phasecenter='ICRS 16h26m28.2s  -24d24m06.12s', #deconvolver='clark', 
+					weighting='briggs', niter=50, nsigma=3, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
+				
+				casa_table.open( f'./xsrc_sub/{config}_rough.image' )		# the one created above, in [Jy/beam]
+				img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
+				casa_table.close()
+				ptitle = 'Target - xsrc (quick clean)' 
+				fig, ax = plt.subplots( figsize=(6,6))  
+				ci = ax.imshow( img.T , origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=1e-6, vmax=None, clip=True) )    # transpose to have as sky model
+				ax.set( title=ptitle, ) ; ax.axis( 'off' )
+				fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
+				fig.savefig( ptitle.replace(' ', '_') + config + fig_ext , bbox_inches='tight', dpi=200)
+				plt.close()
+				
+		if vistab_export:				# export the CASA MS to UV table suited for GALARIO
+			casa_table = cto.table()
+			casa_table.open( MSname ) #  + '.binned' )
+			uvp.io.export_uvtable( f'uvtab_C{config.strip("alma.cycle")}.txt', tb=casa_table, vis=MSname, datacolumn='CORRECTED_DATA') 
+			casa_table.close()
+
+	if len(config_name) > 1:
+		print( 'Creating concatenated MS\n')
+		ctk.concat( vis=[ f'{diskname}.{config_name[0]}.noisy.ms', f'{diskname}.{config_name[1]}.noisy.ms'], concatvis= f'{diskname}.concat.noisy.cms', keepcopy=True)		# merge both MS into one	
+	return print( '\nMock observation completed !\n')
 
 
 
@@ -651,11 +667,10 @@ def min_bkg_rms( image):
 	return min( min(bkg_rms), rms(image) )
 
 
-def residuals_vis_plot( MSname, model_vis, T_exp):
+def residuals_vis_plot( MSname, model_vis, T_exp, r_robust=0.2):
 	'''
 	Calculate the residuals between the visibilities of the mock observations and the bestfit model (galario + multisource).
 	'''
-	# MSname = f'{diskname}.{config_name}.noisy.ms'		# mock obs MS
 	casa_table = cto.table()
 	casa_table.open( MSname.replace('.ms', '') + '.image' )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
@@ -675,7 +690,7 @@ def residuals_vis_plot( MSname, model_vis, T_exp):
 		imsize= noisy_img.shape,	
 		cell = f'{pixscale}rad',
 		phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
-		weighting='briggs', robust=0.2, #deconvolver='clark', 
+		weighting='briggs', robust=r_robust, #deconvolver='clark', 
 		niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
 	
@@ -702,7 +717,7 @@ def residuals_vis_plot( MSname, model_vis, T_exp):
 		datacolumn='corrected',  			# Use the corrected_data where we stored the residual visibilities
 		imsize= noisy_img.shape,			# compare with noisy image
 		cell = f'{pixscale}rad',
-		weighting='briggs', robust=0.2, #deconvolver='clark', 
+		weighting='briggs', robust=r_robust, #deconvolver='clark', 
 		phasecenter='ICRS 16h26m28.2s  -24d24m06.12s',
 		niter=10000, nsigma=1, threshold= f'{ 1* analytic_sensitivity(t=T_exp) :.4f}mJy',
 		) 
@@ -906,7 +921,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 		sampler = emcee.backends.HDFBackend( f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
 	nsteps = sampler.get_chain().shape[0]
 	if burnin is None:
-		burnin = nsteps//(4*4)		# 4 is the thinning factor in the mcmc run
+		burnin = nsteps//(4*2)		# 4 is the thinning factor in the mcmc run
 	bestfit = mcmc_plots( sampler, labels=labs_mc, burn_in=burnin, walk_clip_thresh=walksigma, figures=False )
 	np.savetxt( f'bestfit_params.txt', bestfit )		# save a (Npar, 3) table with the columns being: best value, 16p, 84p
 	# bestfit = np.loadtxt('bestfit_params.txt')
@@ -931,8 +946,9 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 
 
 
-def get_galargs( wle):
-	u, v, Re_obs, Im_obs, w = np.require( np.loadtxt( 'uvtab.txt', unpack=True), requirements='C')
+def get_galargs( wle, uvtab_name):
+	#uvtab_name = 'uvtab_cc.txt' if cc else 'uvtab.txt'
+	u, v, Re_obs, Im_obs, w = np.require( np.loadtxt( uvtab_name, unpack=True), requirements='C')
 	u /= wle
 	v /= wle	# have the baselines in lambda units
 	nxy, dxy = gd.get_image_size( u, v, verbose=False) # , PB=1.13*wle/12 )		# number and size of pixel in radians
@@ -944,12 +960,13 @@ def get_galargs( wle):
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, savedir='', nRMS=2, wle=mm3, MSname=''):
+def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, savedir='', nRMS=10, wle=mm3, MSname=''):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
 	os.chdir( savedir + diskname )
-	galargs = get_galargs( wle=wle) 
+	galargs = get_galargs( wle=wle, uvtab_name='uvtab_C11.7.txt') 
+	galargs_cc = get_galargs( wle=wle, uvtab_name='uvtab_C11.4.txt')
 
 	# parameter space domain
 	p_ranges_2c = np.array([[7.8, 13],	# Log10( I0disk )	[Log(Jy/sr)]
@@ -982,7 +999,7 @@ def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, saved
 		p_rang_mc = p_ranges_gauss
 
 	# execute the MCMC
-	sampled = mcmc_run( galargs=galargs, p0= p0_mc, p_ranges= p_rang_mc, 
+	sampled = mcmc_run( galargs=[galargs, galargs_cc], p0= p0_mc, p_ranges= p_rang_mc, 
 			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False )
 	
