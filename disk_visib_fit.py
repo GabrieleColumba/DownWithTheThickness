@@ -1,7 +1,6 @@
-# # # Full pipeline to mock obs + galario fit. 
+# # # Full pipeline to perform mock obs + galario & MCMC fitting. 
 
 import glob
-import sys
 from local_variables import *		# file with the local path pointers and cpu settings
 from visibfit_functions import *
 import argparse
@@ -27,59 +26,60 @@ if __name__=='__main__':
 
 	model_comps = '2c' if args['2c'] else '1c'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
-	config_name = 'alma.cycle' + args["config"]		# main antenna configuration (disk oriented)
+	config_name = 'alma.cycle' + args["config"]		# main antenna configuration (extended, disk oriented)
 	wle = float(args["RT_wavel"]) /1e6				# [m]	assuming wle is exact as names
-	cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }			# compact configuration for each wavelength
+	cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }			# compact configuration for each wavelength, env-oriented
 	cc_name = f'alma.cycle11.{cc_dict[wle]}'	
 	config_list = [config_name, cc_name] if args['compconf']==True else [config_name]
+	conf_flag = 'CC' if args['compconf']==True else ''
 	folder_wle = f'{round(wle*1e3)}mm/'
 	data_path  = data_prefix + folder_wle
-	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/'		# results directory name
+	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/'		# results directory name
 	try: os.mkdir( savedir )
 	except FileExistsError: print('Parent run directory already existent.')
 
-	filepath = savedir + 'disk*'  if args["replot_only"]  else data_path + '*.fits'	# check either the results or the sky models
+	filepath = savedir + 'disk*'  if args["replot_only"]  else  data_path + '*.fits'	# check either the results or the sky models
 	disklist = sorted( glob.glob( filepath ) )
 	
 	if args['diskname'] == 'all':		# run all disk regressions sequentially
 
 		for fname in disklist:
-			if args["replot_only"]:		# check the disk already regressed and produce again plots
-				diskname = fname.replace( savedir, '' )
-				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_name )
-			else:						# perform the regression from scratch
-				diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
-				if int( diskname.strip( 'disk_xyz') ) in NOfit:
-					print('Skipping NO-FIT target: ', fname , '\n')
-				else:
-					print( '\nRunning for: \t', diskname )
-					perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-							data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_name)	
-					mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'], nRMS=args['nRMS'], 
-				  			Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_name)
+			diskname = fname.replace( filepath, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
+				
+			if int( diskname.strip( 'disk_xyz') ) in NOfit:
+				print('Skipping NO-FIT target: ', fname , '\n')
+			elif not args["replot_only"]: 				# perform the regression from scratch
+				print( '\nRunning for: \t', diskname )
+				perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
+						data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
+				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
+						Ncpu=Ncpu, savedir=savedir, nRMS=args['nRMS'], wle=wle, config_name=config_list)
+				
+			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 
-
-	else:			# regress one disk per task (suited for sbatch arrays)
+	else:		# regress one disk per task (suited for sbatch arrays)
+		
 		try:
 			idx = int( args['diskname'] )		# if it's a number
 			fname = disklist[ idx ]
+			diskname = fname.replace( filepath, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 		except:
-			fname = data_path + args['diskname'] + f'_{args["RT_wavel"]}um.fits'
+			diskname = args['diskname']
+			fname = data_path + diskname + f'_{args["RT_wavel"]}um.fits'
 		
-		if args["replot_only"]:	
-			diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')		# for single disk names
-			#diskname = fname.replace( savedir, '' )															# for array sbatch runs
-			MSname = f'{diskname}.{config_name}.noisy.ms' # if not args['compconf'] else f'{diskname}.concat.noisy.cms'
-			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, MSname=MSname )
-			sys.exit()		# replot and terminate before regressions
-
-		diskname = fname.replace( data_path, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 		if int( diskname.strip( 'disk_xyz') ) in NOfit:
 			print('Skipping NO-FIT target: ', fname , '\n')
 		else:
 			print( '\nRunning for: \t', diskname )
-			MSname = f'{diskname}.{config_name}.noisy.ms' # if not args['compconf'] else f'{diskname}.concat.noisy.cms'
-			perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-					data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
-			mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-					Ncpu=Ncpu, savedir=savedir, nRMS=args['nRMS'], wle=wle, MSname=MSname)
+			if not args["replot_only"]:
+				perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
+						data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
+				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
+						Ncpu=Ncpu, savedir=savedir, nRMS=args['nRMS'], wle=wle, config_name=config_list)
+	
+			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
+				
+			print('\nCleaning up the various intermediate files !\n')
+			# os.system('rm -rvf *concat*')
+			os.system( f'rm -rvf *.last {diskname}.alma*' )
+			# os.system( f'rm -rvf bestmod xsrc_sub  *.last {diskname}.alma*' )
