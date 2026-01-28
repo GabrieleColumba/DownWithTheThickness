@@ -80,6 +80,6 @@ if __name__=='__main__':
 			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 				
 			print('\nCleaning up the various intermediate files !\n')
-			# os.system('rm -rvf *concat*')
+			os.system('rm -rvf *concat*')
 			os.system( f'rm -rvf *.last {diskname}.alma*' )
 			# os.system( f'rm -rvf bestmod xsrc_sub  *.last {diskname}.alma*' )

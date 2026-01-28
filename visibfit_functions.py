@@ -752,9 +752,9 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 	uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 	uv.uvbin( uvbin_size)
 	# mask = uv.bin_count != 0 
-	uvdist = uv.bin_quantity( uv.bin_uvdist)[0] / 1000	#[mask] 
+	uvdist = uv.bin_quantity( uv.uvdist)[0] / 1000	#[mask] 
 	uvdist[ np.isclose( uvdist, 0) ] = np.nan
-	mask = np.isnan( uvdist ) or (uv.bin_count != 0 )
+	mask = np.isnan( uvdist ) | (uv.bin_count != 0 )
 	data_dict = {'fmt':'o', 'ms':5, 'color':'k', 'linewidth':0, 'capsize':2, 'ecolor':'gray', 'elinewidth':0.5, 'label':'Data', 'alpha':0.8}
 	ax.errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
 	axins.errorbar( x=uvdist, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
@@ -766,7 +766,7 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 	# uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
 	uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
 	# uvdist = uv_mod.bin_uvdist[mask] / 1000 	# same as data
-	mask = np.isnan( uvdist ) or (uv_mod.bin_count != 0 )
+	mask = np.isnan( uvdist ) | (uv_mod.bin_count != 0 )
 	model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.8, 'label':'Model', 'alpha':0.95}	
 	ax.errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
 	axins.errorbar( uvdist, uv_mod.bin_im[mask], **model_dict)
@@ -784,7 +784,7 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 					np.save( f, arr=comp_vis )
 			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
 			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-			uv_mod.uvbin( uvbin_size ) ; mask = mask = np.isnan( uvdist ) or (uv_mod.bin_count != 0 )
+			uv_mod.uvbin( uvbin_size ) ; mask = mask = np.isnan( uvdist ) | (uv_mod.bin_count != 0 )
 			# uvdist = uv_mod.bin_uvdist[mask] / 1000 
 			comp_dict = { 'ls':lls[i], 'color':colors[i], 'lw':1.5, 'label':labs[i], 'alpha':0.92}
 			ax.errorbar( uvdist, uv_mod.bin_re[mask],  **comp_dict)
@@ -918,7 +918,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
 	fig, ax = plt.subplots( figsize=(6,6))
 	ax.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')	# slicing to have it mirrored as casa
-	ax.title('galario best model')
+	ax.set_title('galario best model')
 	ax.axis(False)
 	fig.savefig( f'galario_sky-model_bestfit' + fig_ext, bbox_inches='tight', dpi=200)
 	plt.close()
