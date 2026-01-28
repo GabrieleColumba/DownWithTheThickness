@@ -44,7 +44,7 @@ if __name__=='__main__':
 	if args['diskname'] == 'all':		# run all disk regressions sequentially
 
 		for fname in disklist:
-			diskname = fname.replace( filepath, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
+			diskname = os.path.basename( fname ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 				
 			if int( diskname.strip( 'disk_xyz') ) in NOfit:
 				print('Skipping NO-FIT target: ', fname , '\n')
@@ -62,7 +62,7 @@ if __name__=='__main__':
 		try:
 			idx = int( args['diskname'] )		# if it's a number
 			fname = disklist[ idx ]
-			diskname = fname.replace( filepath, '' ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
+			diskname = os.path.basename( fname ).replace( f'_{args["RT_wavel"]}um', '').strip('.fits')
 		except:
 			diskname = args['diskname']
 			fname = data_path + diskname + f'_{args["RT_wavel"]}um.fits'

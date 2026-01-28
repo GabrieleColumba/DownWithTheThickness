@@ -751,8 +751,10 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 	uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
 	uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 	uv.uvbin( uvbin_size)
-	mask = uv.bin_count != 0 # slice(None)
-	uvdist = uv.bin_uvdist[mask] / 1000
+	# mask = uv.bin_count != 0 
+	uvdist = uv.bin_quantity( uv.bin_uvdist)[0] / 1000	#[mask] 
+	uvdist[ np.isclose( uvdist, 0) ] = np.nan
+	mask = np.isnan( uvdist ) or (uv.bin_count != 0 )
 	data_dict = {'fmt':'o', 'ms':5, 'color':'k', 'linewidth':0, 'capsize':2, 'ecolor':'gray', 'elinewidth':0.5, 'label':'Data', 'alpha':0.8}
 	ax.errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
 	axins.errorbar( x=uvdist, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
@@ -763,7 +765,8 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 	uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 	# uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
 	uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
-	uvdist = uv_mod.bin_uvdist[mask] / 1000 
+	# uvdist = uv_mod.bin_uvdist[mask] / 1000 	# same as data
+	mask = np.isnan( uvdist ) or (uv_mod.bin_count != 0 )
 	model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.8, 'label':'Model', 'alpha':0.95}	
 	ax.errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
 	axins.errorbar( uvdist, uv_mod.bin_im[mask], **model_dict)
@@ -772,8 +775,8 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 
 	if two_comp:
 		os.system( 'rm visib_disk+env.npy' )				# remove it if it exists already
+		colors, labs, lls = ['tab:blue', 'tab:green'], ['disk','envelope'], ['--',':']
 		for i, comp in enumerate([diskmod, envmod]):		# separately plot disk and envelope contributions
-			colors, labs, lls = ['tab:blue', 'tab:green'], ['disk','envelope'], ['--',':']
 			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')	
 			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
 			if save_vis: 	
@@ -781,13 +784,11 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 					np.save( f, arr=comp_vis )
 			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
 			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-			uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
-			uvdist = uv_mod.bin_uvdist[mask] / 1000 
+			uv_mod.uvbin( uvbin_size ) ; mask = mask = np.isnan( uvdist ) or (uv_mod.bin_count != 0 )
+			# uvdist = uv_mod.bin_uvdist[mask] / 1000 
 			comp_dict = { 'ls':lls[i], 'color':colors[i], 'lw':1.5, 'label':labs[i], 'alpha':0.92}
 			ax.errorbar( uvdist, uv_mod.bin_re[mask],  **comp_dict)
 			axins.errorbar( uvdist, uv_mod.bin_im[mask], **comp_dict)
-			# uv_mod.plot( axes=(ax, axins), linestyle='--', color=colors[i], alpha=0.9, linewidth='1.5', label=labs[i], yerr=False, uvbin_size=uvbin_size, fontsize=10)
-			# ax.yaxis.set_label_coords(-0.1, 0.5) ; axins.yaxis.set_label_coords(-0.1, 0.5)	# get uvplot labels closer
 
 	ax.set( ylabel='Re(V) [Jy]', xscale='log', yscale='log') ; ax.legend( loc='best', bbox_to_anchor=(0, 0, 0.9, 0.9), fontsize=8)
 	axins.set( ylabel='Im(V) [Jy]', xscale='log', xlabel='uvdistance [k$\mathrm{\lambda}$]' )
@@ -879,12 +880,13 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 		else:
 			ctk.concat( vis=[ f'{diskname}.{config_name[0]}.noisy.ms', f'{diskname}.{config_name[1]}.noisy.ms'], concatvis= MSname)	
 			os.chdir('../')
-			print('simanalyzing\n')
+			print('simanalyzing')
 			ctk.simanalyze( project=diskname ,
 					vis= f'{diskname}/{MSname}', 
 					niter = 10000,		# auto cell and imgsize values
 					threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
-					weighting = 'briggs', analyze= False, graphics= 'file')
+					weighting = 'briggs', analyze=False, graphics= 'file')
+			plt.close()
 			print( 'printing concat uvtab')
 			os.chdir(diskname)
 			casa_table = cto.table()
@@ -914,10 +916,11 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 
 	# # best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
-	plt.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')	# slicing to have it mirrored as casa
-	plt.title('galario best model')
-	plt.axis(False)
-	plt.savefig( f'galario_sky-model_bestfit' + fig_ext, bbox_inches='tight', dpi=200)
+	fig, ax = plt.subplots( figsize=(6,6))
+	ax.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')	# slicing to have it mirrored as casa
+	ax.title('galario best model')
+	ax.axis(False)
+	fig.savefig( f'galario_sky-model_bestfit' + fig_ext, bbox_inches='tight', dpi=200)
 	plt.close()
 	return print( '\n Best-fit plots and images saved.\n')
 
