@@ -281,7 +281,32 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 # 	else:
 # 		print( 'No walkers to mask.')
 # 		return samples
+
+def angle_best_median( fl_samples, ang_idx, niter=4):
+	'''
+	For angular quantities that can be cyclic, check if shifting the domain endpoints finds a better best value (median).
+	niter: Descrizione
+	'''
+	delta_shift = 90 / niter	# [deg]
+	for i in ang_idx:
+		count = []
+		angles = fl_samples[:, ang_idx].copy()	# select only the angle parameters
+		percs = np.percentile( angles,  [50, 16, 84] ).T 
+		if percs[2] - percs[1] < 22:			# uncertainty smaller than a significant fraction of the whole range
+			print( '\nMarginalisation already accurate, skipping the angular median check.')
+		else:
+			for n in range(niter):
+				angles = np.where( angles < n*delta_shift,  angles + 180, angles)		# move them to the end of the range
+				med = np.median( angles)
+				hist = np.histogram( angles, bins='auto')
+				count.append( hist[0][ np.argmin( abs( hist[1] - med)) ] )		# check hist counts near median
+			
+			n_best = np.argmax( count )
+			angles = np.where( angles < n_best*delta_shift,  angles + 180, angles)	
+			fl_samples[:, ang_idx][:] = angles		# update orig samples with the adjusted interval
 	
+	return fl_samples
+
 	
 def clip_chains( samples, thresh=5):
 	'''
@@ -329,6 +354,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 	fig.savefig( folder + 'chains_steps' + fig_ext, dpi=400)
 	if figures: plt.show()
 	plt.close()
+
 
 	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
 	fig = corner.corner(
@@ -950,7 +976,7 @@ def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, saved
 
 	# parameter space domain
 	p_ranges_2c = np.array([[7.8, 13],	# Log10( I0disk )	[Log(Jy/sr)]
-						[7.8, 13.],		# Log10( IOenvelope)   
+						[6, 13.],		# Log10( IOenvelope)   
 						[1e-2, .8],		# sigma i.e. sma [arcsec]
 						[1e-2, 1.6],	# Ri [arcsec] (Rmax= 8 / 5 = 1.6, to avoid an envelope cut at high fluxes)
 						[5, 1000],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
