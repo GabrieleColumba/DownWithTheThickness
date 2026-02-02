@@ -139,23 +139,25 @@ def copy_extra_sources( MSname, nRMS, deconvmod=True ):
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	table = cto.table()
-	table.open( MSname.replace('.ms', '') + '.image' )					# noisy image (for regions selection only)
+	table.open( MSname.replace('.ms', '.image' ))					# noisy image (for regions selection only)
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 		# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']			# a, b and PA of beam
 	beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
 	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
 	beam_to_pix = ( 3600* np.rad2deg( img_pixscale ) )**2  / beam_area				# to convert the flux from [Jy/beam] to [Jy/pix]
 	xsrc_img = noisy_img	# deprecated !
+	bkg_rms = min_bkg_rms( noisy_img)
 	factor = beam_to_pix
 	if deconvmod:
-		table.open( MSname.replace('.ms', '') + '.model' )		
+		table.open( MSname.replace('.ms', '.model' ))		
 		deconvolved = table.getcol('map').squeeze().copy( order='F').T			# deconvolved model image of the sky [Jy/pix]
 		xsrc_img = deconvolved
+		bkg_rms = rms(deconvolved)
 		factor = 1		# deconv is already in [Jy/pix]
 	table.close()
 
 	## apply threshold to identify the sources on the convolved image
-	thresh = nRMS * min_bkg_rms( noisy_img ) 		# min_bkg_rms( noisy_img )
+	thresh = nRMS * bkg_rms 		# min_bkg_rms( noisy_img )
 	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
@@ -189,22 +191,23 @@ def copy_extra_sources( MSname, nRMS, deconvmod=True ):
 		print( '\nNo extra sources found in the image!\n' )
 		return (0, img_pixscale)
 	# nimg_masked[ nimg_masked <= 1e-50 ] = 1e-50			# remove negative values
-	return nimg_masked * factor, img_pixscale		# [Jy/pix], [rad/pix]
+	return nimg_masked * factor, img_pixscale, bkg_rms	# [Jy/pix], [rad/pix], [Jy/pix]
 
 
 def xsrc_to_visib( extra_sources, u, v ):
 	'''
-	Convert a sky image [Jy/pix] of extra sources to complex visibilities. 
+	Convert a sky image [Jy/pix] of extra sources to complex visibilities. Only convert the signal above given nRMS threshold.
 	'''
+	RMS_thresh = extra_sources[2]		# background level
 	yy, xx = np.indices( extra_sources[0].shape ) 
 	deltas_pix =  - ( xx - extra_sources[0].shape[1] / 2) +1, yy - extra_sources[0].shape[0] / 2 +1		# (+1 offset due to CASA pixel centring)
 	dRA, dDec = deltas_pix[0] * extra_sources[1], deltas_pix[1] * extra_sources[1]		# [rad]
 	xsrc_vis = 0 + 0.j
-	clean_sources_pos = np.argwhere( abs(extra_sources[0]) > 1e-10 )
+	clean_sources_pos = np.argwhere( abs(extra_sources[0]) > RMS_thresh )
 	print( 'Converting', len(clean_sources_pos), 'points of extra sources image in visibilities' )
 	for p in clean_sources_pos:
-		f = extra_sources[0][ p[0], p[1]]		# read the pixel flux value
-		Re = np.full_like( u, f )			# add each clean component as constant centred source (phase=0)
+		f = extra_sources[0][ p[0], p[1]] - RMS_thresh		# read the pixel flux value and subtract the nRMS background
+		Re = np.full_like( u, f )							# add each clean component as constant centred source (phase=0)
 		vis_sh = gd.apply_phase_vis( dRA[p[0], p[1]], dDec[p[0], p[1]], u, v, Re + 0.j)		# shift the component to its place in the sky
 		xsrc_vis = xsrc_vis + vis_sh
 	return xsrc_vis
@@ -282,15 +285,15 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 # 		print( 'No walkers to mask.')
 # 		return samples
 
-def angle_best_median( fl_samples, ang_idx, niter=4):
+def angle_best_median( fl_samples, ang_idx, niter=5):
 	'''
-	For angular quantities that can be cyclic, check if shifting the domain endpoints finds a better best value (median).
+	For angular quantities that can be cyclic (PA), check if shifting the domain endpoints finds a better best value (median).
 	niter: Descrizione
 	'''
 	delta_shift = 90 / niter	# [deg]
 	for i in ang_idx:
 		count = []
-		angles = fl_samples[:, ang_idx].copy()	# select only the angle parameters
+		angles = fl_samples[:, i].copy()	# select only the angle parameters
 		percs = np.percentile( angles,  [50, 16, 84] ).T 
 		if percs[2] - percs[1] < 22:			# uncertainty smaller than a significant fraction of the whole range
 			print( '\nMarginalisation already accurate, skipping the angular median check.')
@@ -298,13 +301,13 @@ def angle_best_median( fl_samples, ang_idx, niter=4):
 			for n in range(niter):
 				angles = np.where( angles < n*delta_shift,  angles + 180, angles)		# move them to the end of the range
 				med = np.median( angles)
-				hist = np.histogram( angles, bins='auto')
+				hist = np.histogram( angles, bins=18)
 				count.append( hist[0][ np.argmin( abs( hist[1] - med)) ] )		# check hist counts near median
 			
 			n_best = np.argmax( count )
 			angles = np.where( angles < n_best*delta_shift,  angles + 180, angles)	
-			fl_samples[:, ang_idx][:] = angles		# update orig samples with the adjusted interval
-	
+			fl_samples[:, i][:] = angles		# update orig samples with the adjusted interval
+			print( 'PA values recentered with a domain shift of [deg]', n_best*delta_shift)
 	return fl_samples
 
 	
@@ -355,6 +358,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 	if figures: plt.show()
 	plt.close()
 
+	flat_samples = angle_best_median( flat_samples, ang_idx=[7])
 
 	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
 	fig = corner.corner(
@@ -734,6 +738,8 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	flux_rescale = pix_ratio**2		# flux rescaling factor
 	return resampled * flux_rescale		# [Jy/pix]
 
+# uvdist = np.hypot(u, v)
+# np.linspace( 0, uvdist.max(), round(uvdist.max()/uvbin_size))
 
 def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=mm3, make_modelimg=True, save_vis=False, Axes=None ):
 	'''
@@ -967,7 +973,7 @@ def get_galargs( wle, config_name):
 	return [Rmin, dR, nR, nxy, dxy, u, v, Re_obs, Im_obs, w]
 
 
-def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, savedir='', nRMS=10, wle=mm3, config_name=[]):
+def mcmc_regress( diskname, nsteps, two_components=True, Ncpu=None, savedir='', wle=mm3, config_name=[]):
 	'''
 	Main pipeline for fitting YSO models with galario to a sky model (filename).
 	'''
@@ -975,21 +981,21 @@ def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, saved
 	galargs = [get_galargs( wle=wle, config_name=config) for config in config_name]		# one or two if SC or CC
 
 	# parameter space domain
-	p_ranges_2c = np.array([[7.8, 13],	# Log10( I0disk )	[Log(Jy/sr)]
-						[6, 13.],		# Log10( IOenvelope)   
+	p_ranges_2c = np.array([[7.0, 13],	# Log10( I0disk )	[Log(Jy/sr)]
+						[6.5, 13.],		# Log10( IOenvelope)   
 						[1e-2, .8],		# sigma i.e. sma [arcsec]
 						[1e-2, 1.6],	# Ri [arcsec] (Rmax= 8 / 5 = 1.6, to avoid an envelope cut at high fluxes)
 						[5, 1000],		# Rout/Ri [arcsec] fraction of Ri		# [3e-4, 8]
 						[1.3, 2.99],	# p_index []
-						[-5., 95.],		# inc (deg)
+						[-15., 100.],	# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
 						[-2, 2]])		# dDec (arcsec)
 
-	p_ranges_gauss = np.array([[8, 15],	# Log10( I0 )	[Log(Jy/sr)]
+	p_ranges_gauss = np.array([[7, 15],	# Log10( I0 )	[Log(Jy/sr)]
 						# [0.2, 0.9],	# Hr0
 						[1e-5, .8],		# sigma i.e. sma 	[arcsec]
-						[-5., 95.],		# inc (deg)
+						[-10., 100.],	# inc (deg)
 						[-7, 180.],		# PA (deg)
 						[-2, 2],		# dRa (arcsec)
 						[-2, 2]])		# dDec (arcsec)
@@ -1008,6 +1014,3 @@ def mcmc_regress( diskname, T_exp, nsteps, two_components=True, Ncpu=None, saved
 	sampled = mcmc_run( galargs=galargs, p0= p0_mc, p_ranges= p_rang_mc, 
 			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=f'{diskname}__sampler', 
 			two_comp=two_components, append=False )
-	
-	# bestfit_plots( diskname, T_exp, None, two_components, sampled, nRMS, wle=wle, savedir=savedir, config_name=config_name)
-

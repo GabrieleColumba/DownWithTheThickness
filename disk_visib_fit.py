@@ -73,13 +73,14 @@ if __name__=='__main__':
 			print( '\nRunning for: \t', diskname )
 			if not args["replot_only"]:
 				perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-						data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
-				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-						Ncpu=Ncpu, savedir=savedir, nRMS=args['nRMS'], wle=wle, config_name=config_list)
+							data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
+				mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
+							Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
 	
 			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
-				
-			print('\nCleaning up the various intermediate files !\n')
-			os.system('rm -rvf *concat*')
-			os.system( f'rm -rvf *.last {diskname}.alma*' )
-			# os.system( f'rm -rvf bestmod xsrc_sub  *.last {diskname}.alma*' )
+			
+			if args['compconf']:
+				print('\nCleaning up the various intermediate files !\n')
+				# os.system('rm -rf *concat*')		# required to replot
+				os.system( f'rm -rf *.last {diskname}.alma*' )
+				# os.system( f'rm -rvf bestmod xsrc_sub  *.last {diskname}.alma*' )
