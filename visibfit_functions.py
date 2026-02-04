@@ -738,10 +738,9 @@ def resample_image( image, npix_new, old_pixscale, new_pixscale, order=1):
 	flux_rescale = pix_ratio**2		# flux rescaling factor
 	return resampled * flux_rescale		# [Jy/pix]
 
-# uvdist = np.hypot(u, v)
-# np.linspace( 0, uvdist.max(), round(uvdist.max()/uvbin_size))
 
-def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=mm3, make_modelimg=True, save_vis=False, Axes=None ):
+
+def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=50e3, logbins=False, wle=mm3, make_modelimg=True, save_vis=False, Axes=None ):
 	'''
 	Produce UVplots for all the bestfit solutions. 
 	'''
@@ -781,46 +780,40 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=10e3, wle=m
 
 	uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )		# observations uv-plot !
 	uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
-	uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-	uv.uvbin( uvbin_size)
-	# mask = uv.bin_count != 0 
-	uvdist = uv.bin_quantity( uv.uvdist)[0] / 1000	#[mask] 
+	#uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+	uv.uvbin( uvbin_size, logbins=logbins)
+	uvdist = uv.bin_uvdist / 1000		# [klam] 
 	uvdist[ np.isclose( uvdist, 0) ] = np.nan
-	mask = np.isnan( uvdist ) | (uv.bin_count != 0 )
 	data_dict = {'fmt':'o', 'ms':5, 'color':'k', 'linewidth':0, 'capsize':2, 'ecolor':'gray', 'elinewidth':0.5, 'label':'Data', 'alpha':0.8}
-	ax.errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
-	axins.errorbar( x=uvdist, y=uv.bin_im[mask], yerr=uv.bin_im_err[mask], **data_dict)
+	ax.errorbar( x=uvdist, y=uv.bin_re, yerr=uv.bin_re_err, **data_dict)
+	axins.errorbar( x=uvdist, y=uv.bin_im, yerr=uv.bin_im_err, **data_dict)
 	del uv
 	
 	uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )	# model uv-plot : disk (+ env)
 	uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
-	uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-	# uv_mod.plot( axes=axes, linestyle='-', color='r', alpha=0.9, label='Total model', yerr=False, uvbin_size=uvbin_size)
-	uv_mod.uvbin( uvbin_size ) ; mask = uv_mod.bin_count != 0
-	# uvdist = uv_mod.bin_uvdist[mask] / 1000 	# same as data
-	mask = np.isnan( uvdist ) | (uv_mod.bin_count != 0 )
+	# uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+	uv_mod.uvbin( uvbin_size, logbins=logbins ) ; #mask = uv_mod.bin_count != 0
 	model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.8, 'label':'Model', 'alpha':0.95}	
-	ax.errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
-	axins.errorbar( uvdist, uv_mod.bin_im[mask], **model_dict)
+	ax.errorbar( uvdist, uv_mod.bin_re, **model_dict)
+	axins.errorbar( uvdist, uv_mod.bin_im, **model_dict)
 	ax.text( x=0.95, y=0.95, s= fr'$\chi^2_\nu$={red_chi2 :.3f}', ha='right', va='center', transform=ax.transAxes, color='gray', fontsize=9, alpha=1.)
 	del uv_mod
 
 	if two_comp:
-		os.system( 'rm visib_disk+env.npy' )				# remove it if it exists already
 		colors, labs, lls = ['tab:blue', 'tab:green'], ['disk','envelope'], ['--',':']
 		for i, comp in enumerate([diskmod, envmod]):		# separately plot disk and envelope contributions
 			comp_vis = gd.sampleImage( comp, dxy, u, v, PA=PA, dRA=dRA, dDec=dDec, check=False, origin='lower')	
 			uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, comp_vis.real, comp_vis.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
+			# uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+			uv_mod.uvbin( uvbin_size, logbins=logbins ) ; #mask = np.isnan( uvdist ) | (uv_mod.bin_count != 0 )
 			if save_vis: 	
 				with open('visib_disk+env.npy', 'ab') as f:		# this requires two separate np.load calls to read back the arrays
-					np.save( f, arr=comp_vis )
-			uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
-			uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-			uv_mod.uvbin( uvbin_size ) ; mask = mask = np.isnan( uvdist ) | (uv_mod.bin_count != 0 )
-			# uvdist = uv_mod.bin_uvdist[mask] / 1000 
+					np.save( f, arr=comp_vis ) 		# uv_mod.bin_re + 1.j*uv_mod.bin_im  to save the binned instead of the comp_vis full
+
 			comp_dict = { 'ls':lls[i], 'color':colors[i], 'lw':1.5, 'label':labs[i], 'alpha':0.92}
-			ax.errorbar( uvdist, uv_mod.bin_re[mask],  **comp_dict)
-			axins.errorbar( uvdist, uv_mod.bin_im[mask], **comp_dict)
+			ax.errorbar( uvdist, uv_mod.bin_re,  **comp_dict)
+			axins.errorbar( uvdist, uv_mod.bin_im, **comp_dict)
 
 	ax.set( ylabel='Re(V) [Jy]', xscale='log', yscale='log') ; ax.legend( loc='best', bbox_to_anchor=(0, 0, 0.9, 0.9), fontsize=8)
 	axins.set( ylabel='Im(V) [Jy]', xscale='log', xlabel='uvdistance [k$\mathrm{\lambda}$]' )
@@ -888,7 +881,7 @@ def pentaplot( diskname, MSname, bestfit_pars, galargs, two_comp, wle, run_name,
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
 	uvax = fig.add_axes( rect=[1.12, 0.2, 1/2.8, 0.35])		# add an axes for the uvplot
-	uvax = make_uvplots( MSname, bestfit_pars, galargs, two_comp, 20e3, wle, make_modelimg=False, Axes=uvax)
+	uvax = make_uvplots( MSname, bestfit_pars, galargs, two_comp, 50e3, True, wle, make_modelimg=False, save_vis=False, Axes=uvax)
 	fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
 	fig.savefig( f'pentaplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
@@ -941,7 +934,8 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 		config = 'concat' if len(config_name) > 1 else config_name[0]
 		galargs = get_galargs( wle=wle, config_name=config)
 	# copy_extra_sources( MSname, nRMS)
-	model_image, mod_vis = make_uvplots( MSname, bestfit, galargs, two_comp=two_comp, wle=wle, save_vis=True )
+	os.system( 'rm visib_disk+env.npy' )				# remove it if it exists already
+	model_image, mod_vis = make_uvplots( MSname, bestfit, galargs, two_comp=two_comp, uvbin_size=20e3, logbins=False, wle=wle, save_vis=True )
 	residuals_vis_plot( MSname, mod_vis, T_exp )
 	run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
 	pentaplot( diskname, MSname, bestfit, galargs, two_comp, wle, run_name)
