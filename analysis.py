@@ -10,7 +10,6 @@ import argparse
 import pandas as pd
 # import scipy.integrate as si
 import astropy.units as u
-from astropy.io import fits
 from astropy import constants as const
 import casatools as cto
 # import emcee, corner
@@ -20,7 +19,7 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 from local_variables import *
 from visibfit_functions import crop_image
-plt.rcParams.update({ 'font.size':10, 'legend.fontsize':8, 'figure.dpi':200})
+plt.rcParams.update({ 'font.size':10, 'legend.fontsize':9, 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24, wb 43 ?? not shown
 OKlist =    np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 78, 79, 82, 83, 43]) 	# (70, 78, 29, 52 no bc binary, 43 misterious and thick, 63 75 no bc no info in truths)
@@ -162,7 +161,7 @@ def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
 	return # markerline
 
 
-def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
+def ratio_histogram( var1, var2, run_name, histcolor='tab:green', xlims=[None,None]):
 	'''
 	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
 	'''
@@ -174,6 +173,7 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
 	style = {'edgecolor': edge_rgb, 'linewidth': 1.5, 'zorder':2}
 
 	ptitle =  f'{var1.name}_{var2.name} ratio' + run_name
+	shortle = run_name[1:4] + f'{var1.name[0]} ratio' 
 	fig, ax = plt.subplots( figsize =(4,4), tight_layout=True )
 	# fig.suptitle( ptitle )
 	q16, median_r, q84 = np.nanquantile( ratio, [0.16, 0.5, 0.84])
@@ -183,7 +183,7 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green'):
 	ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
 		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
-	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=ptitle )
+	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], xlim=xlims, title=shortle )
 	ax.legend()
 	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
@@ -282,6 +282,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
 	ptitle = 'Disk mass comparison' + run_name
+	shortle = run_name[1:4] + 'disk mass' 
 	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True )
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
 	if errors: 
@@ -294,15 +295,12 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	ax.text( x=0.01, y=0.92, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
 	axlims = [ 3e-5, 1.2e-2]
-	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xscale='log', yscale='log', xlim=axlims, ylim=axlims, aspect='equal', title=ptitle )
-	# ax.axis( 'square')
-	# ax.set_box_aspect(1)
-	# ax.set_aspect('equal', adjustable='box')
+	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xscale='log', yscale='log', xlim=axlims, ylim=axlims, aspect='equal', title=shortle )
 	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
-	if not simple_M: ratio_histogram( df.M_obs, df.M_sim/100, run_name, histcolor='tab:red')
+	if not simple_M: ratio_histogram( df.M_obs, df.M_sim/100, run_name, histcolor='tab:red', xlims=[0, 3])
 
 
 def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
@@ -324,6 +322,7 @@ def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
 	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
 
 	ptitle = 'Radius comparison' + run_name
+	shortle = run_name[1:4] + 'disk radius' 
 	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
 	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
@@ -338,14 +337,14 @@ def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
 		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.2f}x'),
 		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
-		 title=ptitle, xlim=[0.05,2.4], ylim=[0.05, 2.4], aspect='equal' )
+		 title=shortle, xlim=[0.05,2.1], ylim=[0.05, 2.1], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( loc='lower right')
 	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
-	ratio_histogram( df.R_obs, df.R_sim, run_name, histcolor='tab:green')
+	ratio_histogram( df.R_obs, df.R_sim, run_name, histcolor='tab:green', xlims=[0.38, 2.7])
 
 
 def plot_inc_compare( df, run_name):
@@ -355,13 +354,14 @@ def plot_inc_compare( df, run_name):
 	qs = np.nanquantile( df.i_obs / df.i_sim, [0.16, 0.5, 0.84] )
 
 	ptitle = 'Inclination comparison' + run_name
+	shortle = run_name[1:4] + 'disk inclination' 
 	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
 	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.9, err_alpha=0.27 )
 	# ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
 	ax.text( x=0.01, y=0.92, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
-		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=9, alpha=0.8)
-	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', aspect='equal', xlim=[0,90], ylim=[0,90], title=ptitle )
+		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
+	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', aspect='equal', xlim=[0,90], ylim=[0,90], title=shortle )
 	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf')]
 	# plt.show()
 	plt.close()
@@ -586,7 +586,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 				F_v_simple = gauss_flux_integral( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
 				M_obs_simple = F_v_simple *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
 				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
-				Fv_count = count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
+				Fv_count = np.nan #count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
 				F_v_thicc = thick_flux( v_obs, dist, R_obs[0], l_star=l_star)			# theoretical fully thick disk flux
 
 				M_env_o, Fv_env = env_mass_annuli( v_obs, LI0_env, Ri, p_idx, Rout, k_obs, l_star)
@@ -780,17 +780,18 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 
 def alpha_Menv_plot( model, quantity):
 
-	data = np.loadtxt( 'alpha37_env.txt')
+	data = np.loadtxt( 'alpha137_env.txt')
 
 	ptitle = 'spectral index vs M_env' + f'-{model}-{quantity}'
 	fig, ax = plt.subplots( figsize=(6,4), layout='constrained')
-	ax.scatter( data[:,2], data[:,1], label=r'$\alpha$')
+	ax.scatter( data[:,2], data[:,3], c='tab:blue', label=r'$\alpha_{1-3}$', alpha= 0.7)
+	ax.scatter( data[:,2], data[:,1], c='tab:orange', label=r'$\alpha_{3-7}$')
 	#ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
 	ax.set( xlabel='$ M_\mathrm{env} $ [M$_{\odot}$]', ylabel=r'$\alpha$', title=ptitle) #,  xscale='log', yscale='log', xlim=[1e-4, 20], ylim=[1e-2, 1e5])
 	# ax.legend( loc='lower left')
 	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
 	# plt.show()
-	[fig.savefig( ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[fig.savefig( ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
 
 
 
@@ -854,7 +855,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 			tabs = uvtabs  if model == 'full'  else comptabs		# single component table (uvtab - model)
 			q1, q3, q7 = [ plot_quantity( quantity, tabs[t]) for t in range(3) ]
 
-			uvdist3 = tabs[1].bin_quantity( tabs[1].uvdist)[0]  # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
+			uvdist3 = tabs[1].bin_uvdist   # np.where( qty > 0 , uvtab3.bin_uvdist, np.nan)	# reference baselines distances
 			uvdist3[ np.isclose( uvdist3, 0) ] = np.nan
 			# q3 = qty # np.where( qty > 0 , qty, np.nan) 			# reference REAL values to compute ratios
 			q1 = Akima1DInterpolator( tabs[0].bin_uvdist, q1 )( uvdist3 )		# interpolate at uvdist3 points, where the ref value are binned
@@ -865,13 +866,13 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 			a13 = - np.log10( ratio13) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
 			a37 = - np.log10( ratio37) / np.log10( 3 / 7 )
 			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun] mass within 1000 au excluding disk
-			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[1:5]), M_env ] )			# take the first points for envelope scales
+			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[1:3]), M_env , np.nanmean( a13[1:3])] )			# take the first points for envelope scales
 			# add theoretical spectral index (beta=1.52 from optool opacity)
 			T_profile = temp_profile_Tung( lum=truths_df.loc[int( diskname[4:6])][['L_acc', 'L_int']].sum(), r=(1.22/uvdist3/2 * dist).to_value(u.au) )			# T(uvdist)
 			a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=T_profile) / planck_bbody( v_obs[2], T=T_profile)) / np.log10( v_obs[1] / v_obs[2] )
 
 			# fig, axes = plt.subplots()
-			# axes[d].axhline( y=3.5, ls='--', c='gray' )			# y=3.5 alpha marker
+			axes[d].axhline( y=2, ls=':', c='gray', alpha=0.4 )			# optically thick zone
 			axes[d].plot( uvdist3 *1e-3, a37_theor, c='grey', ls='--', label=r'theoretical $\alpha_{3-7mm}$' )
 			axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
 			axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.75 )
@@ -897,7 +898,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
-	np.savetxt( 'alpha37_env.txt', np.reshape( a_tab, (-1,3)) )			# save for M_env - alpha correlation
+	np.savetxt( 'alpha137_env.txt', np.reshape( a_tab, (-1,4)) )			# save for M_env - alpha correlation
 	print(' Mega uv plot saved')
 
 
@@ -1055,6 +1056,7 @@ if __name__=='__main__':
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-fullsamp', action='store_true', help='analyse all OK targets (default: False)')
 	parser.add_argument('-monosrc', action='store_true', help='do NOT use multi-source fit and clip the extra sources (default: False)')
+	parser.add_argument('-compconf', action='store_true', help='add a compact configuration observation to data (default: False)')
 	parser.add_argument('-Tavg', type=int, default=122, help='average temperature of disks for flux-mass conversion (default: 122K)')
 	parser.add_argument('-r90', action='store_true', help='use R_90 as obs radius (default: R_95)')
 	# parser.add_argument('-simple_M', action='store_true', help='calc mass with simplest thin case approx (default: False)')
@@ -1062,29 +1064,34 @@ if __name__=='__main__':
 
 	model_comps = '2c' if args['2c'] else '1c'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
+	config_name = 'alma.cycle' + args['config']		# main antenna configuration
 	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
-	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}/' 		# results directory name
-	config_name = 'alma.cycle' + args['config']
+	cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }			# compact configuration for each wavelength, env-oriented
+	cc_name = f'alma.cycle11.{cc_dict[wle]}'	
+	config_list = [config_name, cc_name] if args['compconf']==True else [config_name]
+	conf_flag = 'CC' if args['compconf']==True else ''
+	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/' 		# results directory name
+
 	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
 	#assess_SNR( results_dir=savedir, config_name=config_name, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	# rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
-	#				  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
+					  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
 	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# plot_correlations( rdf, run_name=run_suffix )
 	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
 	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
-	alpha_Menv_plot( model='full', quantity='mod' )
+	# visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
+	# alpha_Menv_plot( model='full', quantity='mod' )
 
-	for mod in ['full','env']:
-                for q in ['Re','mod']:
-                        visib_ratios_plot( model=mod, quantity=q, binsize=10e3, max_baseline=2e5, targetslist=analist)
-                        alpha_Menv_plot( model=mod, quantity=q )
+	# for mod in ['full','env']:
+	#             for q in ['Re','mod']:
+	#                     visib_ratios_plot( model=mod, quantity=q, binsize=20e3, max_baseline=2e5, targetslist=analist)
+	#                     alpha_Menv_plot( model=mod, quantity=q )
 
 
 
