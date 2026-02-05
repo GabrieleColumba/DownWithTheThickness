@@ -52,10 +52,10 @@ if __name__=='__main__':
 				print( '\nRunning for: \t', diskname )
 				perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
 						data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
-				mcmc_regress( diskname, args['Texp'], nsteps=args['nsteps'], two_components=args['2c'],
-						Ncpu=Ncpu, savedir=savedir, nRMS=args['nRMS'], wle=wle, config_name=config_list)
+			# 	mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
+			# 			Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
 				
-			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
+			# bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 
 	else:		# regress one disk per task (suited for sbatch arrays)
 		

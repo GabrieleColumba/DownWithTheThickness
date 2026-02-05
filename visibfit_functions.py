@@ -139,7 +139,7 @@ def copy_extra_sources( MSname, nRMS, deconvmod=True ):
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	table = cto.table()
-	table.open( MSname.replace('.ms', '.image' ))					# noisy image (for regions selection only)
+	table.open( MSname.replace('.ms', '.image' ))						# noisy image (for regions selection only)
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 		# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']			# a, b and PA of beam
 	beam_area = np.pi * beam_dict['major']['value'] * beam_dict['minor']['value'] / (4*np.log(2))	# FWHM ellipse area [arcsec^2/beam]
@@ -157,41 +157,41 @@ def copy_extra_sources( MSname, nRMS, deconvmod=True ):
 	table.close()
 
 	## apply threshold to identify the sources on the convolved image
-	thresh = nRMS * bkg_rms 		# min_bkg_rms( noisy_img )
+	thresh = nRMS * min_bkg_rms( noisy_img) 		# min_bkg_rms( noisy_img )
 	bw = closing( noisy_img > thresh, footprints.rectangle(3, 3) )
 	cleared = clear_border( bw )		# remove artifacts connected to image border
 	label_image = label( cleared )		# label image regions
 	nimg_masked = np.where( noisy_img > thresh, xsrc_img, 0)		# keep everything above n*RMS 
-	
-	# little additional check
-	# if rms( crop_image( noisy_img, margins=[60,60]) )
-	label_image10 = label( clear_border( closing( noisy_img > 10* min_bkg_rms( noisy_img ), footprints.rectangle(3, 3) ) ) )
-	print( len( np.unique( label_image)), 'sources detected with nRMS =', nRMS, f'\t({len( np.unique( label_image10))} with 10xRMS)' )
-	
-	## exclude the central source !
-	sources_df = pd.DataFrame( regionprops_table( label_image, properties=('centroid', 'orientation'), ) ).rename( columns={'centroid-0':'y0', 'centroid-1':'x0'} )
-	target_idx = ((sources_df[['y0','x0']] - np.array(noisy_img.shape)/2 )**2 ).sum( axis=1).idxmin() + 1	# central source (target)
-	nimg_masked[ label_image == target_idx ] = 0		# zero on the main target
 
-	if (nimg_masked > 0).any():	
+	# little additional check
+	label_image10 = label( clear_border( closing( noisy_img > 10* min_bkg_rms( noisy_img ), footprints.rectangle(3, 3) ) ) )
+	print( len( np.unique( label_image)) -1, 'sources detected with nRMS =', nRMS, f'\t({len( np.unique( label_image10))-1} with 10xRMS)' )
+	
+	if len( np.unique( label_image)) < 3:	# 0 in label_image is bkg
+		print( '\nNo extra sources found in the image!\n' )
+		return (0, img_pixscale)
+	
+	else:
+		## exclude the central source !
+		sources_df = pd.DataFrame( regionprops_table( label_image, properties=('centroid', 'orientation'), ) ).rename( columns={'centroid-0':'y0', 'centroid-1':'x0'} )
+		target_idx = ((sources_df[['y0','x0']] - np.array(noisy_img.shape)/2 )**2 ).sum( axis=1).idxmin() + 1	# central source (target)
+		nimg_masked[ label_image == target_idx ] = 0		# zero on the main target
+
 		fig, ax = plt.subplots( figsize=(5, 5))		# diagnostic figure
 		if deconvmod: 
 			smooth_r = ( beam_area / np.pi )**0.5 / np.rad2deg( img_pixscale )/3600		# smoothing radius in [pix]
 			diag_img = snd.gaussian_filter( nimg_masked, sigma=smooth_r )
-			diag_img[ noisy_img < thresh ] = np.nan	; diag_img[ label_image == target_idx ] = np.nan		# just for visualisation
+			diag_img[ noisy_img < thresh ] = np.nan			# just for visualisation
 		else:
 			diag_img = np.where( noisy_img > thresh, xsrc_img, np.nan)		# use noisy_img just for diagnostic plot
-			diag_img[ label_image == target_idx ] = np.nan
+		diag_img[ label_image == target_idx ] = np.nan
 		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )
 		ax.imshow( np.where(label_image==target_idx, 1, np.nan), origin='lower', cmap='bwr_r')			# mark the target position
 		ax.set_axis_off()
 		fig.savefig( 'sky_xsrc_map' + MSname.strip('image') + fig_ext, bbox_inches='tight', dpi=300)
 		plt.close()
-	else: 
-		print( '\nNo extra sources found in the image!\n' )
-		return (0, img_pixscale)
-	# nimg_masked[ nimg_masked <= 1e-50 ] = 1e-50			# remove negative values
-	return nimg_masked * factor, img_pixscale, bkg_rms	# [Jy/pix], [rad/pix], [Jy/pix]
+
+		return nimg_masked * factor, img_pixscale, bkg_rms	# [Jy/pix], [rad/pix], [Jy/pix]
 
 
 def xsrc_to_visib( extra_sources, u, v ):
@@ -590,7 +590,7 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 		
 		os.chdir( diskname )
 		if monosource==False:
-			xRMS_factor = 20 	# need higher RMS for good extraction in compact config
+			xRMS_factor = 10 	# need higher RMS for good extraction in compact config
 			extra_sources = copy_extra_sources( MSname, nRMS=nRMS + i*xRMS_factor )
 			if np.any( extra_sources[0]):
 				print('\n  Subtracting EXTRA SOURCES from MOCK-OBS visibilities!  \n')
