@@ -301,7 +301,7 @@ def angle_best_median( fl_samples, ang_idx, niter=5):
 			for n in range(niter):
 				angles = np.where( angles < n*delta_shift,  angles + 180, angles)		# move them to the end of the range
 				med = np.median( angles)
-				hist = np.histogram( angles, bins=18)
+				hist = np.histogram( angles, bins=15)
 				count.append( hist[0][ np.argmin( abs( hist[1] - med)) ] )		# check hist counts near median
 			
 			n_best = np.argmax( count )
@@ -590,7 +590,7 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 		
 		os.chdir( diskname )
 		if monosource==False:
-			xRMS_factor = 10 	# need higher RMS for good extraction in compact config
+			xRMS_factor = 20 	# need higher RMS for good extraction in compact config
 			extra_sources = copy_extra_sources( MSname, nRMS=nRMS + i*xRMS_factor )
 			if np.any( extra_sources[0]):
 				print('\n  Subtracting EXTRA SOURCES from MOCK-OBS visibilities!  \n')
