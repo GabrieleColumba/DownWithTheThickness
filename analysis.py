@@ -161,7 +161,7 @@ def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
 	return # markerline
 
 
-def ratio_histogram( var1, var2, run_name, histcolor='tab:green', xlims=[None,None]):
+def ratio_histogram( var1, var2, run_name, histcolor='tab:green', bins='doane', xlims=[None,None]):
 	'''
 	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
 	'''
@@ -173,17 +173,17 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green', xlims=[None,No
 	style = {'edgecolor': edge_rgb, 'linewidth': 1.5, 'zorder':2}
 
 	ptitle =  f'{var1.name}_{var2.name} ratio' + run_name
-	shortle = run_name[1:4] + f'{var1.name[0]} ratio' 
+	shortle = run_name[1:4] + f' {var1.name[0]} ratio' 
 	fig, ax = plt.subplots( figsize =(4,4), tight_layout=True )
 	# fig.suptitle( ptitle )
 	q16, median_r, q84 = np.nanquantile( ratio, [0.16, 0.5, 0.84])
-	hh = ax.hist( x=ratio, bins='doane', color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
+	hh = ax.hist( x=ratio, bins=bins, range=xlims, color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
 	ax.axvline( x=1, ls='--', lw=2.5, c='k', alpha=0.99)
 	ax.axvline( x=median_r, ls='-.', lw=2, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
 	ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
 		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
-	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], xlim=xlims, title=shortle )
+	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=shortle )	# , xlim=xlims
 	ax.legend()
 	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
@@ -282,7 +282,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
 	ptitle = 'Disk mass comparison' + run_name
-	shortle = run_name[1:4] + 'disk mass' 
+	shortle = run_name[1:4] + ' disc mass' 
 	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True )
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
 	if errors: 
@@ -300,7 +300,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 	# plt.show()
 	plt.close()
 
-	if not simple_M: ratio_histogram( df.M_obs, df.M_sim/100, run_name, histcolor='tab:red', xlims=[0, 3])
+	if not simple_M: ratio_histogram( df.M_obs, df.M_sim/100, run_name, histcolor='tab:red', bins=14, xlims=[0, 3])
 
 
 def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
@@ -322,7 +322,7 @@ def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
 	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
 
 	ptitle = 'Radius comparison' + run_name
-	shortle = run_name[1:4] + 'disk radius' 
+	shortle = run_name[1:4] + ' disc radius' 
 	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
 	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
@@ -344,7 +344,7 @@ def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
 	# plt.show()
 	plt.close()
 
-	ratio_histogram( df.R_obs, df.R_sim, run_name, histcolor='tab:green', xlims=[0.38, 2.7])
+	ratio_histogram( df.R_obs, df.R_sim, run_name, histcolor='tab:green', bins=10, xlims=[0.2, 2.7])
 
 
 def plot_inc_compare( df, run_name):
@@ -354,7 +354,7 @@ def plot_inc_compare( df, run_name):
 	qs = np.nanquantile( df.i_obs / df.i_sim, [0.16, 0.5, 0.84] )
 
 	ptitle = 'Inclination comparison' + run_name
-	shortle = run_name[1:4] + 'disk inclination' 
+	shortle = run_name[1:4] + ' disc inclination' 
 	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
 	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.9, err_alpha=0.27 )
@@ -667,16 +667,17 @@ def peak_beam_avg( image, table):
 
 
 def plot_SNR( df, run_name ):
-	ptitle = 'SNR plot' + run_name
+	ptitle = 'SNR ' + run_name[1:] 
 	fig, ax = plt.subplots( figsize=(6,4), constrained_layout=True)
 	dff = df.reset_index()
-	dff.plot( xticks=dff.index, rot=90, logy=True, ax=ax, marker='o')
+	dff.plot( xticks=dff.index, rot=90, logy=True, ax=ax, marker='o', legend=False)
 	ax.set_xticklabels( df.index)
 	# ax.axhline( y=[0.002], color='gray', ls=':')
-	ax.axhline( y=10, color='gray', ls='--')
-	ax.axhline( y=100, color='gray', ls='-')
+	ax.axhline( y=10, color='gray', ls=':')
+	ax.axhline( y=np.nanmedian( df.SNR), color='tab:blue', ls='--', alpha=0.7, label='median SNR')
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.set( title=ptitle)
+	fig.legend()
 	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
@@ -692,17 +693,14 @@ def assess_SNR( results_dir, config_name, run_name ):
 
 	for fname in fitslist:
 		diskname = os.path.basename( fname )	 	# each one in a separate folder
-		img_tab = f'{results_dir}{diskname}/{diskname}.concat.noisy.cms.image'		# cleaned simanalyze image
+		img_tab = f'{results_dir}{diskname}/{diskname}.{config_name}.noisy.image'		# cleaned simanalyze image
 		table = cto.table()
 		table.open( img_tab )
 		img = table.getcol('map').squeeze().copy() 
-
 		peak = np.max( crop_image(img, margins=[35,35]) )	# find the peak flux in a region around the centre
 		peak_beam = peak_beam_avg( img, table=table)
-
 		noise = min_bkg_rms( img )			# the minimum rms from bkg patches
 		# noise = rms( img )				# the rms of the entire image including target source
-
 		snr = peak_beam / noise
 		SNRs.append( [diskname.strip( 'disk' ), snr, peak, peak_beam, noise] )
 		table.close()
@@ -903,7 +901,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 
 
 
-def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targetslist=OKlist):
+def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsize=50e3, logbins=True, targetslist=OKlist):
 	'''
 	Make uvplots of all regressed targets in one figure
 	'''
@@ -930,7 +928,7 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 				bestfit = np.loadtxt('bestfit_params.txt')[:,0]		# only take the best values (no errors)
 				inc, PA, dRA, dDec = bestfit[-4:]
 				inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert to [rad] !
-				galargs = get_galargs( wle=wle)
+				galargs = get_galargs( wle=wle, config_name=config)
 				chi2, vis_mod = galario_model( pars= bestfit, galargs=galargs, two_comp=two_comp )[-2:]
 				red_chi2 = chi2/(galargs[2] - len(bestfit)) 	# chi2/(42*(42-1)/2 - len(bestfit))	# with 42 antennas
 				u, v, Re_obs, Im_obs, w = galargs[-5:]
@@ -938,9 +936,9 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 				# observations uv-plot !
 				uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
 				uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
-				uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-				uv.uvbin( binsize)		# , 'zorder':1.9
-				mask = uv.bin_count != 0 # slice(None)
+				# uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+				uv.uvbin( binsize, logbins=logbins)		# , 'zorder':1.9
+				mask = slice(None) # uv.bin_count != 0 # slice(None)
 				uvdist = uv.bin_uvdist[mask]/1000
 				data_dict = {'fmt':'o', 'ms':3, 'color':'k', 'linewidth':0, 'capsize':1.2, 'capthick':1, 'ecolor':'gray', 'elinewidth':0.2, 'label':'Data', 'alpha':0.7}
 				axes[d].errorbar( x=uvdist, y=uv.bin_re[mask], yerr=uv.bin_re_err[mask], **data_dict)
@@ -949,8 +947,8 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 				# model uv-plot : disk (+ env)
 				uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
 				uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
-				uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-				uv_mod.uvbin( binsize )
+				# uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+				uv_mod.uvbin( binsize, logbins=logbins )
 				# uvdist = uv_mod.bin_uvdist[mask]/1000		# should be the same as for obs
 				model_dict = { 'ls':'-', 'color':'r', 'linewidth':1.3, 'label':'Model', 'alpha':1}	
 				axes[d].errorbar( uvdist, uv_mod.bin_re[mask], **model_dict)
@@ -965,8 +963,8 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, binsize=50e3, targe
 					for i in range( len( mod_vis)):				# separately plot disk and envelope contributions
 						uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, mod_vis[i].real, mod_vis[i].imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
 						uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
-						uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
-						uv_mod.uvbin( binsize ) #; mask = slice(None) #uv_mod.bin_count != 0
+						# uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
+						uv_mod.uvbin( binsize, logbins=logbins ) #; mask = slice(None) #uv_mod.bin_count != 0
 						# uvdist = uv_mod.bin_uvdist[mask] / 1000 
 						comp_dict = { 'ls':lss[i], 'color':colors[i], 'lw':1.2, 'label':labs[i], 'alpha':0.95}
 						axes[d].errorbar( uvdist, uv_mod.bin_re[mask],  **comp_dict)
@@ -1020,7 +1018,7 @@ def collective_residuals_plot( results_dir, run_name, as_margin=2, targetslist=O
 	for d in range( n_disks):	# n_disks
 		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
 		if int( diskname[4:6]) in targetslist:
-			print( 'reading residuals of ', diskname)
+			# print( 'reading residuals of ', diskname)
 			try:
 				# os.chdir( disk_dirs[d] )
 				res_img = np.load( disk_dirs[d] + '/bestmod/best_residuals.npy')		# Load normalised residuals
@@ -1065,26 +1063,27 @@ if __name__=='__main__':
 	model_comps = '2c' if args['2c'] else '1c'
 	xsrc_flag = 'mono' if args['monosrc'] else 'xsrc'
 	config_name = 'alma.cycle' + args['config']		# main antenna configuration
-	wle = float(args["RT_wavel"]) *1e-6		# [m]	assuming wle is exact as names
+	wle = float(args["RT_wavel"]) /1e6		# [m]	assuming wle is exact as names
 	folder_wle = f'{round(wle*1e3)}mm/'
 	cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }			# compact configuration for each wavelength, env-oriented
 	cc_name = f'alma.cycle11.{cc_dict[wle]}'	
 	config_list = [config_name, cc_name] if args['compconf']==True else [config_name]
-	conf_flag = 'CC' if args['compconf']==True else ''
+	config = 'concat' if len( config_list) > 1 else config_name
+	conf_flag = 'CC' if args['compconf']==True else 'SC'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/' 		# results directory name
 
-	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps}'
+	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps} {conf_flag}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 
-	#assess_SNR( results_dir=savedir, config_name=config_name, run_name=run_suffix )
+	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_suffix )
 	analist = OKlist if args["fullsamp"] else prettylist
-	rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
-					  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
-	# fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
-	# inspect_plots( two_comp=args['2c'], results_dir=savedir )
-	# plot_correlations( rdf, run_name=run_suffix )
-	#collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'])
-	#collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	# rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
+	# 				  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	# # fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
+	# # inspect_plots( two_comp=args['2c'], results_dir=savedir )
+	# # plot_correlations( rdf, run_name=run_suffix )
+	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
+	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 	# visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
 	# alpha_Menv_plot( model='full', quantity='mod' )
 
