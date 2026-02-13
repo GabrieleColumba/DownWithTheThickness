@@ -6,7 +6,7 @@ from visibfit_functions import *
 import argparse
 
 # Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples ?)	
-NOfit = [29, 52, 63, 75]
+NOfit = [29, 52, 63, 70, 75]
 
 if __name__=='__main__':
 
@@ -48,14 +48,15 @@ if __name__=='__main__':
 				
 			if int( diskname.strip( 'disk_xyz') ) in NOfit:
 				print('Skipping NO-FIT target: ', fname , '\n')
-			elif not args["replot_only"]: 				# perform the regression from scratch
-				print( '\nRunning for: \t', diskname )
-				perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-						data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
-			# 	mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
-			# 			Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
-				
-			# bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
+			else:
+				if not args["replot_only"]: 				# perform the regression from scratch
+					print( '\nRunning for: \t', diskname )
+					perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
+							data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
+					mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
+							Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
+					
+				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 
 	else:		# regress one disk per task (suited for sbatch arrays)
 		
@@ -82,5 +83,5 @@ if __name__=='__main__':
 			if args['compconf']:
 				print('\nCleaning up the various intermediate files !\n')
 				# os.system('rm -rf *concat*')		# required to replot
-				os.system( f'rm -rf *.last {diskname}.alma*' )
+				# os.system( f'rm -rf *.last {diskname}.alma*' )
 				# os.system( f'rm -rvf bestmod xsrc_sub  *.last {diskname}.alma*' )
