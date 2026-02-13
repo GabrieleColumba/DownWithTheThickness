@@ -22,8 +22,8 @@ from visibfit_functions import crop_image
 plt.rcParams.update({ 'font.size':10, 'legend.fontsize':9, 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24, wb 43 ?? not shown
-OKlist =    np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 78, 79, 82, 83, 43]) 	# (70, 78, 29, 52 no bc binary, 43 misterious and thick, 63 75 no bc no info in truths)
-prettylist =np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83])
+OKlist =    np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 82, 83, 43]) 	# (70, 78, 29, 52 no bc binary, , 63 75 no bc no info in truths)
+prettylist =np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83])			# 43 misterious and thick, 82 bahh
 # pixscale = 9.92063492063492e-6      	# deg
 # sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
 dist = 140 *u.pc  # parsec
@@ -161,12 +161,18 @@ def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
 	return # markerline
 
 
-def ratio_histogram( var1, var2, run_name, histcolor='tab:green', bins='doane', xlims=[None,None]):
+def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None):
 	'''
 	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
 	'''
 	ratio = var1 / var2		# generally obs/sim
 	mean_r = np.nanmean( ratio)
+	print( f'min and max {var1.name[0]} ratios: ', ratio.min(), ratio.max() )
+	if xlims is not None:
+		binflag = '-fix' 
+		if (ratio.min() < xlims[0]) | (ratio.max() > xlims[1]):
+			print( f'There are some values outside the given hist xlims!')
+	else: binflag = f'-{bins}'
 	base_rgb = np.array(mpl.colors.to_rgb(histcolor))
 	darken_factor = 0.8			# compute a slightly darker edge color automatically
 	edge_rgb = tuple(np.clip(base_rgb * darken_factor, 0, 1))
@@ -185,12 +191,12 @@ def ratio_histogram( var1, var2, run_name, histcolor='tab:green', bins='doane', 
 		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
 	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=shortle )	# , xlim=xlims
 	ax.legend()
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
 
-def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name='', errors=True):
+def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name='', analistdir='OKlist/', errors=True):
 
 	F_thick_sim = [ thick_flux( v_obs, dist, r_max=df.R_sim.iloc[i] *au_to_rad, l_star=df.L_tot.iloc[i]) for i in range( len(df.R_sim)) ]
 	thin_flux_sim = df.M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=Tavg) / dist.cgs.value**2  *1e23		# [Jy] 
@@ -211,7 +217,7 @@ def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name='', error
 	ax.set( xlabel= fr'$ R_\mathrm{{{rdata}}} $ [au]', ylabel= r'$ F_{\nu} $ [Jy]', xscale='log', yscale='log', title=ptitle )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( ) # loc='lower right'
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + f'_k{k_sim :.3f}_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + f'_k{k_sim :.3f}_T{Tavg :1.0f}K' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 	
@@ -233,7 +239,7 @@ def thick_sim_inspo( df, k_sim, Tavg, v_obs, run_name):
 	plt.close()
 	
 
-def plot_mass_env( df, run_name ):
+def plot_mass_env( df, run_name, analistdir ):
 	'''
 	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
 	'''
@@ -253,7 +259,7 @@ def plot_mass_env( df, run_name ):
 	ax.set( xlabel= r'$ M_\mathrm{env, sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{env, obs} $ [M$_{\odot}$]', xscale='log', yscale='log', title=ptitle )
 	ax.axis( 'square')
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/'+ analistdir + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
@@ -264,11 +270,11 @@ def plot_mass_env( df, run_name ):
 	[ax.text( s=df.index[i], x=df.Mcyl[i],  y=df.Fv_env[i], horizontalalignment='left', verticalalignment='bottom', fontsize=5 ) for i in range(len(df)) ]
 	ax.set(  xlabel= 'Mcyl', xscale='log', ylabel= 'F_env', yscale='log')
 	# fig.supylabel( r'$\delta_M$', fontsize=12 )
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/'+ analistdir + ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
 
 
-def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
+def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True):
 	'''
 	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
 	'''
@@ -296,14 +302,16 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, errors=True):
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
 	axlims = [ 3e-5, 1.2e-2]
 	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xscale='log', yscale='log', xlim=axlims, ylim=axlims, aspect='equal', title=shortle )
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
-	if not simple_M: ratio_histogram( df.M_obs, df.M_sim/100, run_name, histcolor='tab:red', bins=14, xlims=[0, 3])
+	if not simple_M: 
+		ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=[0, 2.9])
+		ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins='doane')
 
 
-def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
+def plot_radius_compare( df, res_limit, run_name, analistdir, errors=True, r95=True):
 	'''
 	Assuming R_obs is R_95, in [au] if r95=True, else R_90. 
 	'''
@@ -340,14 +348,15 @@ def plot_radius_compare( df, res_limit, run_name, errors=True, r95=True):
 		 title=shortle, xlim=[0.05,2.1], ylim=[0.05, 2.1], aspect='equal' )
 	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.legend( loc='lower right')
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
-	ratio_histogram( df.R_obs, df.R_sim, run_name, histcolor='tab:green', bins=10, xlims=[0.2, 2.7])
+	ratio_histogram( df.R_obs, df.R_sim, run_name, analistdir, histcolor='tab:green', bins=9, xlims=[0.2, 2.5])
+	ratio_histogram( df.R_obs, df.R_sim, run_name, analistdir, histcolor='tab:green', bins='doane')
 
 
-def plot_inc_compare( df, run_name):
+def plot_inc_compare( df, run_name, analistdir):
 	'''
 	Assuming inc in [deg]. 
 	'''
@@ -362,7 +371,7 @@ def plot_inc_compare( df, run_name):
 	ax.text( x=0.01, y=0.92, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
 		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
 	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', aspect='equal', xlim=[0,90], ylim=[0,90], title=shortle )
-	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf')]
+	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf')]
 	# plt.show()
 	plt.close()
 
@@ -546,17 +555,18 @@ def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
 	return Mtot, dF_grid.sum( axis=0) 
 
 
-def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=122, r95=True, figures=True):
+def main_analysis( targetslist, wle, results_dir, config_name, run_name, analistdir, T_avg=122, r95=True, figures=True):
 	'''
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
+	print( '\nPerforming MAIN analysis of the sample.')
 	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
 	k_sim = 0.54 if round(wle*1e3)==3 else 0.138	# opTool original opacity for the simulation truths
 	if round(wle*1e3)==1: k_sim = 3.5
 	k_obs = k_sim # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
 
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
-	print( len(disklist), 'files found')
+	print( len(disklist), 'files found in ', results_dir)
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[OKlist]	# load my simulation truths file
 	paramlist = []
 
@@ -622,17 +632,17 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, T_avg=1
 		res_df[ [col, col+'_lo',col+'_up'] ] = pd.DataFrame( res_df[col].tolist(), index=res_df.index)
 	
 	os.chdir( results_dir )
-	res_df.to_csv( f'analysis_results-{run_name}.txt', sep='\t') #, float_format='%.2e')
+	res_df.to_csv( f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t') #, float_format='%.2e')
 	# res_df = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')	# to load it
 	
 	if figures:
 		# plot_opacity()
-		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name )
-		plot_inc_compare( res_df, run_name )
-		plot_mass_compare( res_df, run_name, T_avg, simple_M=True ) ; plot_mass_compare( res_df, run_name, T_avg, simple_M=False )
-		plot_mass_env( res_df, run_name )
+		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, analistdir=analistdir )
+		plot_inc_compare( res_df, run_name, analistdir )
+		plot_mass_compare( res_df, run_name, T_avg, True, analistdir ) ; plot_mass_compare( res_df, run_name, T_avg, False, analistdir )
+		plot_mass_env( res_df, run_name, analistdir )
 		theta = alma_resolution( wle=wle, config_name=config_name)
-		plot_radius_compare( res_df, theta, run_name, r95=r95 )
+		plot_radius_compare( res_df, theta, run_name, analistdir, r95=r95 )
 		# thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
 		plt.close() 
 	return res_df
@@ -894,7 +904,6 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 	fig.supxlabel('uv-distance [k$\lambda$]', fontsize=12 )		#, weight='bold'
 	axes[0].legend()
 	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
-	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.close()
 	np.savetxt( 'alpha137_env.txt', np.reshape( a_tab, (-1,4)) )			# save for M_env - alpha correlation
 	print(' Mega uv plot saved')
@@ -989,7 +998,6 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsiz
 	fig.supxlabel('uv-distance [k$\mathrm{\lambda}$]', fontsize=10 )		#, weight='bold'
 	axes[0].legend()
 	fig.savefig( results_dir + ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
-	# [ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 	print('Collective uvplot saved')
@@ -1069,21 +1077,26 @@ if __name__=='__main__':
 	cc_name = f'alma.cycle11.{cc_dict[wle]}'	
 	config_list = [config_name, cc_name] if args['compconf']==True else [config_name]
 	config = 'concat' if len( config_list) > 1 else config_name
-	conf_flag = 'CC' if args['compconf']==True else 'SC'
+	conf_flag = 'CC' if args['compconf'] else 'SC'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/' 		# results directory name
 
 	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps} {conf_flag}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
-
+	if args["fullsamp"]:
+		analist = OKlist
+		analistdir = 'OKlist/'
+		os.makedirs( savedir + 'Figures_png/' + analistdir, exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/' + analistdir, exist_ok=True )
+	else:
+		analist = prettylist
+		analistdir = ''
 	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_suffix )
-	analist = OKlist if args["fullsamp"] else prettylist
-	# rdf = main_analysis( analist, wle=wle, results_dir=savedir, config_name=config_name, run_name=run_suffix,
-	# 				  T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+
+	rdf = main_analysis( analist, wle, savedir, config_name, run_suffix, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
 	# # fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# # inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# # plot_correlations( rdf, run_name=run_suffix )
-	collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
-	collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
+	# collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
+	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 	# visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
 	# alpha_Menv_plot( model='full', quantity='mod' )
 
