@@ -285,7 +285,7 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 # 		print( 'No walkers to mask.')
 # 		return samples
 
-def angle_best_median( fl_samples, ang_idx, niter=15):
+def angle_best_median( fl_samples, ang_idx, niter=10):
 	'''
 	For angular quantities that can be cyclic (PA), check if shifting the domain endpoints finds a better best value (median).
 	niter: Descrizione
@@ -298,17 +298,18 @@ def angle_best_median( fl_samples, ang_idx, niter=15):
 		if percs[2] - percs[1] < 22:			# uncertainty smaller than a significant fraction of the whole range
 			print( '\nMarginalisation already accurate, skipping the angular median check.')
 		else:
-			angles[ angles < 0] = np.nan
+			problem = angles[ angles < 0] 
+			angles = np.delete( angles, angles<0 )			# fix for the values below 0 that would wrongly increase sampling near 175°
+			angles = np.append( angles, np.random.random( len(problem)) *180 )
 			for n in range(niter):
 				angles_s = np.where( angles < n*delta_shift,  angles + 180, angles)		# move them to the end of the range
 				med = np.nanmedian( angles_s)
-				hist = plt.hist( angles_s, bins=18 )  #np.histogram( angles_s, bins=18)
-				plt.close()
+				hist = np.histogram( angles_s, bins=18)
 				count.append( hist[0][ np.argmin( abs( hist[1] - med)) ] )		# check hist counts near median
 			
 			n_best = np.argmax( count )
 			angles_b = np.where( angles < n_best*delta_shift,  angles + 180, angles)	
-			fl_samples[:, i][:] = angles_b		# update orig samples with the adjusted interval
+			fl_samples[:, i] = angles_b		# update orig samples with the adjusted interval
 			print( 'PA values recentered with a domain shift of [deg]', n_best*delta_shift)
 	return fl_samples
 
