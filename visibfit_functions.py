@@ -285,12 +285,12 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 # 		print( 'No walkers to mask.')
 # 		return samples
 
-def angle_best_median( fl_samples, ang_idx, niter=5):
+def angle_best_median( fl_samples, ang_idx, niter=15):
 	'''
 	For angular quantities that can be cyclic (PA), check if shifting the domain endpoints finds a better best value (median).
 	niter: Descrizione
 	'''
-	delta_shift = 90 / niter	# [deg]
+	delta_shift = 180 / niter	# [deg]
 	for i in ang_idx:
 		count = []
 		angles = fl_samples[:, i].copy()	# select only the angle parameters
@@ -298,15 +298,17 @@ def angle_best_median( fl_samples, ang_idx, niter=5):
 		if percs[2] - percs[1] < 22:			# uncertainty smaller than a significant fraction of the whole range
 			print( '\nMarginalisation already accurate, skipping the angular median check.')
 		else:
+			angles[ angles < 0] = np.nan
 			for n in range(niter):
-				angles = np.where( angles < n*delta_shift,  angles + 180, angles)		# move them to the end of the range
-				med = np.median( angles)
-				hist = np.histogram( angles, bins=15)
+				angles_s = np.where( angles < n*delta_shift,  angles + 180, angles)		# move them to the end of the range
+				med = np.nanmedian( angles_s)
+				hist = plt.hist( angles_s, bins=18 )  #np.histogram( angles_s, bins=18)
+				plt.close()
 				count.append( hist[0][ np.argmin( abs( hist[1] - med)) ] )		# check hist counts near median
 			
 			n_best = np.argmax( count )
-			angles = np.where( angles < n_best*delta_shift,  angles + 180, angles)	
-			fl_samples[:, i][:] = angles		# update orig samples with the adjusted interval
+			angles_b = np.where( angles < n_best*delta_shift,  angles + 180, angles)	
+			fl_samples[:, i][:] = angles_b		# update orig samples with the adjusted interval
 			print( 'PA values recentered with a domain shift of [deg]', n_best*delta_shift)
 	return fl_samples
 
@@ -354,7 +356,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 		ax.set_ylabel( labels[i])
 		ax.yaxis.set_label_coords(-0.1, 0.5)
 	axes[-1].set_xlabel("step number")
-	fig.savefig( folder + 'chains_steps' + fig_ext, dpi=400)
+	fig.savefig( folder + 'chains_steps' + fig_ext, dpi=300)
 	if figures: plt.show()
 	plt.close()
 
