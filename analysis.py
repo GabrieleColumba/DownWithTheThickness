@@ -792,26 +792,29 @@ def alpha_Menv_plot( model, quantity):
 
 	ptitle = 'spectral index vs M_env' + f'-{model}-{quantity}'
 	fig, ax = plt.subplots( figsize=(6,4), layout='constrained')
-	ax.scatter( data[:,2], data[:,3], c='tab:blue', label=r'$\alpha_{1-3}$', alpha= 0.7)
-	ax.scatter( data[:,2], data[:,1], c='tab:orange', label=r'$\alpha_{3-7}$')
+	ax.scatter( data[:,2], data[:,3], c='tab:blue', label=r'$\alpha(1-3)$', alpha= 0.7)
+	ax.scatter( data[:,2], data[:,1], c='tab:orange', label=r'$\alpha(3-7)$')
 	#ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
 	ax.set( xlabel='$ M_\mathrm{env} $ [M$_{\odot}$]', ylabel=r'$\alpha$', title=ptitle) #,  xscale='log', yscale='log', xlim=[1e-4, 20], ylim=[1e-2, 1e5])
-	# ax.legend( loc='lower left')
+	ax.legend()
 	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
 	# plt.show()
 	[fig.savefig( ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
 
 
 
-def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5e5, targetslist=OKlist):
+def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=5e5, logbins=False, CC=True, targetslist=OKlist):
 	'''
 	Visualise for ALL targets in our sample the ratios of quantity between 1,3,7mm as function of the baseline. 
 	'''
 	import uvplot as uvp
 	# mpl.use('macosx')
 	from scipy.interpolate import Akima1DInterpolator
-	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7, 'figure.dpi':100})	
+	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':9, 'figure.dpi':100})	
 	mpl.style.use('fast')
+	cc_dict = { 8.9e-4: 'concat', 3e-3: 'concat', 7e-3: 'concat' }			# compact configuration for each wavelength, env-oriented
+	sc_dict = { 8.9e-4: '11.4', 3e-3: '11.7', 7e-3: '11.8' }			# compact configuration for each wavelength, env-oriented
+	conf_dict = sc_dict if not CC else cc_dict
 
 	def plot_quantity( quant, uvtab):
 		if quant=='Re':
@@ -825,9 +828,9 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 		
 	# savedir_prefix =  '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
 	os.chdir( savedir_prefix )			# save plot here
-	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc/'
-	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc/'
-	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc/'
+	resdir_7mm = savedir_prefix + '7mm/run_5400s_2c_xsrc_CC/'
+	resdir_3mm = savedir_prefix + '3mm/run_1800s_2c_xsrc_CC/'
+	resdir_1mm = savedir_prefix + '1mm/run_150s_2c_xsrc_CC/'
 	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
 	n_disks = len(disk_dirs)
 	ncols = 10 ; nrows = int(np.ceil( n_disks / ncols))
@@ -837,6 +840,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 
 	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
 	v_obs = 299792458.0/np.array(wles)
+
 	a_tab = [] 
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	for d in range( n_disks):	# n_disks
@@ -845,7 +849,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 		if int( diskname[4:6]) in targetslist:
 			try:		# Load uvtable using uvplot
 				for i in range(3):		# iterate on wavelength
-					uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname +'/uvtab.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
+					uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname + f'/uvtab_C{conf_dict[wles[i]]}.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
 					if model != 'full':
 						mod_vis = [0,0]
 						with open( dirs[i] + diskname + '/visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
@@ -853,9 +857,9 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 						mod_i = 0 if model == 'env' else 1
 						#comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
 						comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], uvtabs[i].re - mod_vis[mod_i].real, uvtabs[i].im - mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
-						comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline)	; comptabs[i].uvbin( binsize)	# bin it before or AFTER the subtraction ?
+						comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline, minuv=9e3)	; comptabs[i].uvbin( binsize, logbins=logbins)	# bin it before or AFTER the subtraction ?
 						del mod_vis
-					uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline)	; uvtabs[i].uvbin( binsize)
+					uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline, minuv=9e3)	; uvtabs[i].uvbin( binsize, logbins=logbins)
 			except Exception as e:
 				print(f"\nCould not load uvtable for {diskname}: {e}\n")
 				continue
@@ -874,16 +878,18 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 			a13 = - np.log10( ratio13) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
 			a37 = - np.log10( ratio37) / np.log10( 3 / 7 )
 			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun] mass within 1000 au excluding disk
-			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[1:3]), M_env , np.nanmean( a13[1:3])] )			# take the first points for envelope scales
+			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[1:7]), M_env , np.nanmean( a13[1:7])] )			# take the first points for envelope scales
 			# add theoretical spectral index (beta=1.52 from optool opacity)
 			T_profile = temp_profile_Tung( lum=truths_df.loc[int( diskname[4:6])][['L_acc', 'L_int']].sum(), r=(1.22/uvdist3/2 * dist).to_value(u.au) )			# T(uvdist)
 			a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=T_profile) / planck_bbody( v_obs[2], T=T_profile)) / np.log10( v_obs[1] / v_obs[2] )
+			a13_theor = 1.52 + np.log10( planck_bbody( v_obs[0], T=T_profile) / planck_bbody( v_obs[1], T=T_profile)) / np.log10( v_obs[0] / v_obs[1] )
 
 			# fig, axes = plt.subplots()
 			axes[d].axhline( y=2, ls=':', c='gray', alpha=0.4 )			# optically thick zone
-			axes[d].plot( uvdist3 *1e-3, a37_theor, c='grey', ls='--', label=r'theoretical $\alpha_{3-7mm}$' )
-			axes[d].plot( uvdist3 *1e-3, a37, c='tab:orange', ls='-', lw=1.5, label='3mm/7mm' )		# all three ratios in same subplot for each target
-			axes[d].plot( uvdist3 *1e-3, a13, c='tab:blue', ls='-', lw=1.5, label='0.9mm/3mm', alpha=0.75 )
+			axes[d].plot( uvdist3 *1e-3, a37_theor, c='tab:orange', ls='-', label=r'theoretical $\alpha (3-7mm)$', alpha=0.5 )
+			axes[d].plot( uvdist3 *1e-3, a13_theor, c='tab:blue', ls='-', label=r'theoretical $\alpha (1-3mm)$', alpha=0.3 )
+			axes[d].scatter( uvdist3 *1e-3, a37, c='tab:orange', s=16, label='observed 3mm/7mm' )		# all three ratios in same subplot for each target
+			axes[d].scatter( uvdist3 *1e-3, a13, c='tab:blue', s=16, label='observed 0.9mm/3mm', alpha=0.75 )
 			axes[d].set( xscale='log',  ylim=[1,4]) #, yscale='log')#, ylim=[1e-1,1e3]) ; 
 			axes[d].set_title( diskname, fontsize=8)
 
@@ -902,7 +908,7 @@ def visib_ratios_plot( model='full', quantity='Re', binsize=40e3, max_baseline=5
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
 	fig.supylabel( supylab, weight='bold', x=0.08, fontsize=12 )
 	fig.supxlabel('uv-distance [k$\lambda$]', fontsize=12 )		#, weight='bold'
-	axes[0].legend()
+	axes[0].legend( loc='lower right', bbox_transform=fig.transFigure, bbox_to_anchor=(0.9,0.1))
 	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	plt.close()
 	np.savetxt( 'alpha137_env.txt', np.reshape( a_tab, (-1,4)) )			# save for M_env - alpha correlation
@@ -1057,7 +1063,7 @@ if __name__=='__main__':
 
 	parser = argparse.ArgumentParser()		# parsing the name of the disk file to read
 	parser.add_argument('RT_wavel', type=int, help='obs wavelength (3000 or 7000 [um]) (default: 3000)')
-	parser.add_argument('-config', type=str, help='ALMA antenna configuration (default: 11.7)')
+	parser.add_argument('-config', type=str, default='11.7', help='ALMA antenna configuration (default: 11.7)')
 	parser.add_argument('-Texp', type=int, default=3600, help='exposure time (default: 3600s)')
 	parser.add_argument('-2c', action='store_true', help='use two-component model (default: False)')
 	parser.add_argument('-fullsamp', action='store_true', help='analyse all OK targets (default: False)')
@@ -1097,8 +1103,8 @@ if __name__=='__main__':
 	# # plot_correlations( rdf, run_name=run_suffix )
 	# collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
 	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	# visib_ratios_plot( model='env', quantity='mod', binsize=10e3, max_baseline=2e5, targetslist=analist)
-	# alpha_Menv_plot( model='full', quantity='mod' )
+	visib_ratios_plot( model='full', quantity='mod', binsize=20e3, max_baseline=3e5, logbins=True, CC=args['compconf'], targetslist=analist)
+	alpha_Menv_plot( model='full', quantity='mod' )
 
 	# for mod in ['full','env']:
 	#             for q in ['Re','mod']:
