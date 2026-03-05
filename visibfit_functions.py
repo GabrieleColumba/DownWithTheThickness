@@ -227,7 +227,8 @@ def log_prior( pars, p_ranges, two_comp):
 		if two_comp == True:
 			Rout_constrain = (pars[3]*pars[4] > 1) & (pars[3]*pars[4] < Rmax_model)		# 1" < Rout < Rmax (galario grid)
 			Ri_constrain = (pars[3] >= 0.7 *pars[2]) # & (pars[3] < 10 *pars[2])						# 0.7*sigma < Ri  #< 3*sigma
-			if Ri_constrain and Rout_constrain:	
+			I_constrain = pars[0] >= pars[1]
+			if Ri_constrain & Rout_constrain & I_constrain:	
 				return 0.0
 			else: return -np.inf
 		else:

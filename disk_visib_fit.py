@@ -31,7 +31,7 @@ if __name__=='__main__':
 	cc_dict = { 8.9e-4:1, 3e-3: 4, 7e-3:6 }			# compact configuration for each wavelength, env-oriented
 	cc_name = f'alma.cycle11.{cc_dict[wle]}'	
 	config_list = [config_name, cc_name] if args['compconf']==True else [config_name]
-	conf_flag = 'CC' if args['compconf']==True else ''
+	conf_flag = 'CC' if args['compconf']==True else 'SC'
 	folder_wle = f'{round(wle*1e3)}mm/'
 	data_path  = data_prefix + folder_wle
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/'		# results directory name
