@@ -29,6 +29,8 @@ prettylist =np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83])			# 43 mi
 dist = 140 *u.pc  # parsec
 au_to_rad = 1 / dist.to_value(u.au)
 au_to_as = 1 / dist.to_value(u.au) * 180 / np.pi * 3600		# from au to arcsec
+# Rmax = 8	# [arcsec]		# issue is the min baselines not the Rmax really
+uvd_min = 3e4 # np.deg2rad( Rmax / 3600) / 1.22	# [lambda units], for the uvcut
 
 
 def gauss_flux_integral( I0, sigma, Rmax):
@@ -96,7 +98,7 @@ def thick_flux( v, d, r_max, l_star):
 
 def alma_resolution( wle, config_name):
 	'''Return the FWHM resolution [arcsec] given the lambda [m] and the config.'''
-	L80_dict = {'4':369.2,'6':1172.5, '7':1673.1, '8':3527.3 , '9':6482.6}	# 80 percentile baselines lenght [m]
+	L80_dict = {'4':369.2, '5':623.8, '6':1172.5, '7':1673.1, '8':3527.3 , '9':6482.6}	# 80 percentile baselines lenght [m]
 	C_number = config_name[-1]		# take the config number
 	theta_res = 0.574 * wle / L80_dict[ C_number ]		# [rad]
 	return theta_res * 180 / np.pi * 3600	# [arcsec]
@@ -121,6 +123,39 @@ def plot_opacity():
 	ax.legend( loc='lower left')
 	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
 	plt.show()
+
+
+def plot_sample_props( results_dir, run_name, analistdir, bins='doane'):
+	os.chdir( results_dir )
+	df = pd.read_csv( f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+	vars = ['M_sim', 'R_sim', 'i_sim']
+	units = ['M$_\odot$', 'au', '°']
+	colors = ['tab:red', 'tab:green', 'C1']
+
+	for i, v in enumerate( vars):
+		if i != 2:
+			values = np.log10(df[v].values)
+			xlab = f'Log({v}) [{units[i]}]'
+		else: 
+			values = df[v].values
+			xlab = v +  f' [{units[i]}]'
+		mean = np.nanmean( values )
+		base_rgb = np.array(mpl.colors.to_rgb(colors[i]))
+		darken_factor = 0.8			# compute a slightly darker edge color automatically
+		edge_rgb = tuple(np.clip(base_rgb * darken_factor, 0, 1))
+		style = {'edgecolor': edge_rgb, 'linewidth': 1.5, 'zorder':2}
+
+		ptitle =  f'MHD {v} distribution'
+		fig, ax = plt.subplots( figsize =(3.5,3.5), tight_layout=True )
+		# fig.suptitle( ptitle )
+		hh = ax.hist( x=values, bins=bins, color=colors[i], histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
+		ax.axvline( x=mean, ls='-.', lw=2, c=edge_rgb, label=f'mean = {mean :.2f}', alpha=0.9 )	
+		ax.set( xlabel= xlab, ylabel='counts', title=ptitle )	# , xlim=xlims
+		ax.legend()
+		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_')  + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		# plt.show()
+		plt.close()
+	print('simulated sample properties saved to plot!\n')
 
 
 def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
@@ -188,7 +223,7 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 	ax.axvline( x=median_r, ls='-.', lw=2, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
 	ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
-		label=rf'(16-84)%, $\sigma={ np.nanstd(ratio) :.2f}$' )		# take the maximum of the hist for upper y2 limit
+		label=rf'(16-84)%, $\Delta/2={ (q84 - q16)/2 :.2f}$' )		# take the maximum of the hist for upper y2 limit.    $\sigma={ np.nanstd(ratio) :.2f}$'
 	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=shortle )	# , xlim=xlims
 	ax.legend()
 	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
@@ -588,8 +623,8 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 				Rout = pars[4] * Ri
 
 				R_68 = sma * np.sqrt( -2 * np.log(1-0.68))      # 68% radius  [rad]
-				R_90 = R_68 * 1.42                              # 90% radius
-				R_95 = R_68 * 1.62
+				R_90 = R_68 * 1.4216                            # 90% radius
+				R_95 = R_68 * 1.6215
 				R_obs = R_95 if r95 else R_90    # unlike Tung who used 90%
 				l_star = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()			# L_acc + L_int [Lsun]
 
@@ -950,6 +985,7 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsiz
 				axins = axes[d].inset_axes( [0,-0.2 , 1, 0.2] )
 				# observations uv-plot !
 				uv = uvp.UVTable( uvtable=[u*wle, v*wle, Re_obs, Im_obs, w], wle=wle, columns=uvp.COLUMNS_V0 )
+				# uv = uv.uvcut( maxuv=np.inf, minuv=uvd_min)
 				uv.apply_phase( -dRA, -dDec)         # center the source on the phase center
 				# uv.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 				uv.uvbin( binsize, logbins=logbins)		# , 'zorder':1.9
@@ -961,6 +997,7 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsiz
 				del uv
 				# model uv-plot : disk (+ env)
 				uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, vis_mod.real, vis_mod.imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+				# uv_mod = uv_mod.uvcut( maxuv=np.inf, minuv=uvd_min)
 				uv_mod.apply_phase( -dRA, -dDec)    # center the source on the phase center
 				# uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 				uv_mod.uvbin( binsize, logbins=logbins )
@@ -977,6 +1014,7 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsiz
 						mod_vis = [np.load( f), np.load( f)] 		# disk_vis, env_vis
 					for i in range( len( mod_vis)):				# separately plot disk and envelope contributions
 						uv_mod = uvp.UVTable( uvtable=[u*wle, v*wle, mod_vis[i].real, mod_vis[i].imag, w], wle=wle, columns=uvp.COLUMNS_V0 )
+						# uv_mod = uv_mod.uvcut( maxuv=np.inf, minuv=uvd_min)
 						uv_mod.apply_phase( -dRA, -dDec)     	# center on the phase center
 						# uv_mod.deproject( inc=inc/deg, PA=PA/deg, inplace=True)
 						uv_mod.uvbin( binsize, logbins=logbins ) #; mask = slice(None) #uv_mod.bin_count != 0
@@ -1103,8 +1141,9 @@ if __name__=='__main__':
 	# # plot_correlations( rdf, run_name=run_suffix )
 	# collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
 	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	visib_ratios_plot( model='full', quantity='mod', binsize=20e3, max_baseline=3e5, logbins=True, CC=args['compconf'], targetslist=analist)
-	alpha_Menv_plot( model='full', quantity='mod' )
+	# visib_ratios_plot( model='full', quantity='mod', binsize=20e3, max_baseline=3e5, logbins=True, CC=args['compconf'], targetslist=analist)
+	# alpha_Menv_plot( model='full', quantity='mod' )
+	# plot_sample_props( savedir, run_suffix, analistdir )
 
 	# for mod in ['full','env']:
 	#             for q in ['Re','mod']:
