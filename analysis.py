@@ -19,7 +19,7 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 from local_variables import *
 from visibfit_functions import crop_image
-plt.rcParams.update({ 'font.size':10, 'legend.fontsize':9, 'figure.dpi':200})
+plt.rcParams.update({ 'font.size':9, 'legend.fontsize':8, 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24, wb 43 ?? not shown
 OKlist =    np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 82, 83, 43]) 	# (70, 78, 29, 52 no bc binary, , 63 75 no bc no info in truths)
@@ -196,7 +196,7 @@ def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
 	return # markerline
 
 
-def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None):
+def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None, figsz=3.5):
 	'''
 	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
 	'''
@@ -215,7 +215,7 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 
 	ptitle =  f'{var1.name}_{var2.name} ratio' + run_name
 	shortle = run_name[1:4] + f' {var1.name[0]} ratio' 
-	fig, ax = plt.subplots( figsize =(4,4), tight_layout=True )
+	fig, ax = plt.subplots( figsize=(figsz, figsz), tight_layout=True )
 	# fig.suptitle( ptitle )
 	q16, median_r, q84 = np.nanquantile( ratio, [0.16, 0.5, 0.84])
 	hh = ax.hist( x=ratio, bins=bins, range=xlims, color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
@@ -223,7 +223,7 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 	ax.axvline( x=median_r, ls='-.', lw=2, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
 	ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
-		label=rf'(16-84)%, $\Delta/2={ (q84 - q16)/2 :.2f}$' )		# take the maximum of the hist for upper y2 limit.    $\sigma={ np.nanstd(ratio) :.2f}$'
+		label='(16-84)%' + '\n' + f'$\Delta/2={ (q84 - q16)/2 :.2f}$' )		# take the maximum of the hist for upper y2 limit.    $\sigma={ np.nanstd(ratio) :.2f}$'
 	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=shortle )	# , xlim=xlims
 	ax.legend()
 	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
@@ -821,6 +821,10 @@ def fit_Mobs( results_dir, run_name, logfit=True):
 	return popt
 
 
+def klambda_to_au(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# add a physical ruler for size understanding
+def au_to_klambda(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# 1e-3 I guess because the first xaxis is in klambda
+
+	
 def alpha_Menv_plot( model, quantity):
 
 	data = np.loadtxt( 'alpha137_env.txt')
@@ -837,12 +841,45 @@ def alpha_Menv_plot( model, quantity):
 	[fig.savefig( ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
 
 
+def median_alpha_plot( alphalist, uvd, model, quantity):
+	'''
+	Create a plot of the spectral indexes 1/3 and 3/7 from our mock observervations, as the median of the whole sample. 
+	'''
+	# print( alphalist)
+	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':7.5, 'figure.dpi':200})
+	a_obs13 = np.nanquantile( alphalist[0::4], q=[.16, .5, .84], axis=0)
+	a_obs37 = np.nanquantile( alphalist[1::4], q=[.16, .5, .84], axis=0)
+	a_mth13 = np.nanmedian( alphalist[2::4], axis=0)
+	a_mth37 = np.nanmedian( alphalist[3::4], axis=0)
+
+	ptitle = 'Median spectral index' + f' {model} '#_{quantity}'
+	fig, ax = plt.subplots( figsize=(4,3), layout='constrained')
+	ax_top = ax.secondary_xaxis( 'top', functions=(klambda_to_au, au_to_klambda))
+	ax_top.set_xlabel( 'physical scale [au]', color='grey', fontsize=8)
+	ax_top.tick_params( axis="x", which='both', direction="in", colors='grey', pad=0, labelsize=8)
+	
+	#ax.scatter( data[:,2], data[:,3], c='tab:blue', label=r'$\alpha(1-3)$', alpha= 0.7)
+	ax.plot( uvd, a_mth13, c='tab:blue', ls='-', label=r'theoretical $\alpha_{(1-3)mm}$', alpha=0.3 )
+	ax.plot( uvd, a_mth37, c='tab:orange', ls='-', label=r'theoretical $\alpha_{(3-7)mm}$', alpha=0.5 )
+	ax.fill_between( uvd, y1=a_obs13[2], y2=a_obs13[0], color='tab:blue', alpha=0.1, edgecolor=None )
+	ax.fill_between( uvd, y1=a_obs37[2], y2=a_obs37[0], color='tab:orange', alpha=0.1, edgecolor=None )
+	ax.scatter( uvd, a_obs13[1], c='tab:blue', label=r'observed $\alpha_{(1-3)mm}$')
+	ax.scatter( uvd, a_obs37[1], c='tab:orange', label=r'observed $\alpha_{(3-7)mm}$')
+	ax.set( xlabel='uv-distance [k$\lambda$]', ylabel=r'$\alpha$ index', ylim=[1.5, None], xscale='log', title=ptitle) #,  xscale='log', yscale='log', xlim=[1e-4, 20], ylim=[1e-2, 1e5])
+	ax.legend()
+	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
+	# plt.show()
+	[fig.savefig( ptitle.replace(' ', '_') + quantity + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
+
+
+
 
 def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=5e5, logbins=False, CC=True, targetslist=OKlist):
 	'''
 	Visualise for ALL targets in our sample the ratios of quantity between 1,3,7mm as function of the baseline. 
 	'''
 	import uvplot as uvp
+	from galario import deg, arcsec
 	# mpl.use('macosx')
 	from scipy.interpolate import Akima1DInterpolator
 	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':9, 'figure.dpi':100})	
@@ -876,7 +913,7 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
 	v_obs = 299792458.0/np.array(wles)
 
-	a_tab = [] 
+	a_tab = [] ; ratio_book = []
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 )
 	for d in range( n_disks):	# n_disks
 		uvtabs = [0,0,0] ; comptabs = [0,0,0]
@@ -884,16 +921,21 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 		if int( diskname[4:6]) in targetslist:
 			try:		# Load uvtable using uvplot
 				for i in range(3):		# iterate on wavelength
+					dRA, dDec = np.loadtxt( dirs[i] + diskname + '/bestfit_params.txt' )[-2:, 0]
+					dRA *= arcsec ; dDec *= arcsec 
 					uvtabs[i] = uvp.UVTable( filename= dirs[i] + diskname + f'/uvtab_C{conf_dict[wles[i]]}.txt', wle=wles[i], columns=uvp.COLUMNS_V0)		# mock-obs data
 					if model != 'full':
 						mod_vis = [0,0]
 						with open( dirs[i] + diskname + '/visib_disk+env.npy', 'rb') as f:		# this requires two separate np.load calls to read back the two arrays
 							mod_vis = [np.load( f), np.load( f)] 			# disk_vis, env_vis
 						mod_i = 0 if model == 'env' else 1
-						#comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
+						# mod_i = 1 if model == 'env' else 0		# this to compute the ratios directly on the models 
+						# comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], mod_vis[mod_i].real, mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
 						comptabs[i] = uvp.UVTable( uvtable=[uvtabs[i].u*wles[i], uvtabs[i].v*wles[i], uvtabs[i].re - mod_vis[mod_i].real, uvtabs[i].im - mod_vis[mod_i].imag, uvtabs[i].weights], wle=wles[i], columns=uvp.COLUMNS_V0 )
+						comptabs[i].apply_phase( -dRA, -dDec)  
 						comptabs[i] = comptabs[i].uvcut( maxuv=max_baseline, minuv=9e3)	; comptabs[i].uvbin( binsize, logbins=logbins)	# bin it before or AFTER the subtraction ?
 						del mod_vis
+					uvtabs[i].apply_phase( -dRA, -dDec)  
 					uvtabs[i] = uvtabs[i].uvcut( maxuv=max_baseline, minuv=9e3)	; uvtabs[i].uvbin( binsize, logbins=logbins)
 			except Exception as e:
 				print(f"\nCould not load uvtable for {diskname}: {e}\n")
@@ -912,12 +954,14 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 			ratio37 = q3 / q7
 			a13 = - np.log10( ratio13) / np.log10( 0.89 / 3 )		# minus sign because i'm dividing for wavel, not frequency
 			a37 = - np.log10( ratio37) / np.log10( 3 / 7 )
+			
 			M_env = truths_df.loc[ int( diskname[4:6]) ].M_env / 100		# [Msun] mass within 1000 au excluding disk
 			a_tab.append( [int( diskname[4:6]), np.nanmean( a37[1:7]), M_env , np.nanmean( a13[1:7])] )			# take the first points for envelope scales
 			# add theoretical spectral index (beta=1.52 from optool opacity)
 			T_profile = temp_profile_Tung( lum=truths_df.loc[int( diskname[4:6])][['L_acc', 'L_int']].sum(), r=(1.22/uvdist3/2 * dist).to_value(u.au) )			# T(uvdist)
 			a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=T_profile) / planck_bbody( v_obs[2], T=T_profile)) / np.log10( v_obs[1] / v_obs[2] )
 			a13_theor = 1.52 + np.log10( planck_bbody( v_obs[0], T=T_profile) / planck_bbody( v_obs[1], T=T_profile)) / np.log10( v_obs[0] / v_obs[1] )
+			ratio_book.append( [a13, a37, a13_theor, a37_theor] )
 
 			# fig, axes = plt.subplots()
 			axes[d].axhline( y=2, ls=':', c='gray', alpha=0.4 )			# optically thick zone
@@ -931,8 +975,8 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 			del uvtabs, comptabs, q1, q3, q7
 			# plt.show()
 
-	def klambda_to_au(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# add a physical ruler for size understanding
-	def au_to_klambda(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# 1e-3 I guess because the first xaxis is in klambda
+	# def klambda_to_au(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# add a physical ruler for size understanding
+	# def au_to_klambda(x): return 1.22 * 1e-3/x * dist.to_value(u.au)		# 1e-3 I guess because the first xaxis is in klambda
 
 	for ax in axes[n_disks:]: ax.set_visible(False)		# hide unused axes
 	for i, ax in enumerate( axes.reshape(nrows, ncols)[0, :]):
@@ -946,8 +990,10 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 	axes[0].legend( loc='lower right', bbox_transform=fig.transFigure, bbox_to_anchor=(0.9,0.1))
 	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	plt.close()
+
+	median_alpha_plot( np.reshape( ratio_book, (-1, len(uvdist3) )), uvdist3/1000, model, quantity)
 	np.savetxt( 'alpha137_env.txt', np.reshape( a_tab, (-1,4)) )			# save for M_env - alpha correlation
-	print(' Mega uv plot saved')
+	print('Visib ratio plot saved')
 
 
 
@@ -1135,13 +1181,13 @@ if __name__=='__main__':
 		analistdir = ''
 	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_suffix )
 
-	rdf = main_analysis( analist, wle, savedir, config_name, run_suffix, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	# rdf = main_analysis( analist, wle, savedir, config_name, run_suffix, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
 	# # fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# # inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# # plot_correlations( rdf, run_name=run_suffix )
 	# collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
 	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	# visib_ratios_plot( model='full', quantity='mod', binsize=20e3, max_baseline=3e5, logbins=True, CC=args['compconf'], targetslist=analist)
+	# visib_ratios_plot( model='full', quantity='mod', binsize=30e3, max_baseline=7e5, logbins=True, CC=args['compconf'], targetslist=analist)
 	# alpha_Menv_plot( model='full', quantity='mod' )
 	# plot_sample_props( savedir, run_suffix, analistdir )
 
