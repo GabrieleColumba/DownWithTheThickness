@@ -115,7 +115,7 @@ def plot_opacity():
 
 	fig, ax = plt.subplots()
 	ax.plot( opac_df.lam *1e-3, opac_df.kabs, label='K_abs (opTool)', c='k', ls='--')		# lambda from um to mm
-	# ax.plot( opac_df.lam *1e-3, opac_df.ksca, label='K_sca', alpha=0.2)
+	ax.plot( opac_df.lam *1e-3, opac_df.ksca, label='K_sca', alpha=0.2)
 	ax.plot( opac_df.lam *1e-3, k_v_15, label=r'k($\beta=1.5$)', c='b', ls='-.')
 	ax.plot( opac_df.lam *1e-3, k_v_1, label=r'k($\beta=1.0$)', c='r')
 	ax.vlines( x=[0.89, 3, 7], ymin=1e-2, ymax=1e5, colors='gray', alpha=0.6, linestyles=':', linewidths=1)
@@ -123,6 +123,62 @@ def plot_opacity():
 	ax.legend( loc='lower left')
 	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
 	plt.show()
+
+
+def skymodel_ratio( diskname , folder_wles=[3000,7000], margin=None, figure=True):
+	'''
+	Calculate for given diskname the spectral index alpha of the original RT skymodels at 3 and 7mm and plot the image.
+	'''
+	from astropy.io import fits
+
+	for wle_um in folder_wles:
+		fname = data_prefix + f'{round(wle_um/1e3)}mm/' + diskname + f'_{wle_um}um.fits'
+		hdul = fits.open( fname )
+		hdul.info()
+		pixscale = hdul[0].header['CDELT1']	# deg / pix
+
+		main_beam = np.rad2deg( 1.13 * min(folder_wles) / 1e6 / 12	)		# [deg]	,  needs to be the same for both frames
+		pixcut = margin if type(margin) is not type(None) else int( main_beam / pixscale / 2 )							# margin in pixel
+		skycut = crop_image( hdul[0].data, margins=[ pixcut, pixcut])
+		if wle_um == 3000:
+			skycut_3 = skycut
+		else: skycut_7 = skycut
+	
+	skycut_ratio = - np.log10( skycut_3 / skycut_7) / np.log10( 3 / 7 )
+	if figure:
+		plt.figure( figsize=(4,4))
+		plt.imshow(  skycut_ratio[:, ::-1 ], origin='lower', cmap='inferno_r')	# norm=mpl.colors.LogNorm( vmin=None, vmax=None)
+		plt.colorbar()
+		plt.contour( skycut_7[:, ::-1 ], levels=7, origin=None)
+		plt.axis( 'off' )
+		# plt.savefig( 'sky_model' + fig_ext, bbox_inches='tight', dpi=300)
+		plt.show()
+		plt.close()
+	print( '\nMedian of skymodel ratio: ', np.median( skycut_ratio) )
+	return skycut_ratio
+
+
+def skymodel_ratiosplot( diskname, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4)):
+	'''
+	Extra figure for visualising the ratio on the skymodels of a disc seen in two projections. With a fraking well-behaving colorbar, jeez.
+	'''
+	from mpl_toolkits.axes_grid1 import AxesGrid
+	ptitle = 'Sky model spectral index'
+	fig = plt.figure( figsize=fs)
+	fig.suptitle( ptitle)
+	grid = AxesGrid( fig, 111, nrows_ncols=(1, 2), axes_pad=0.02, share_all=True,
+		cbar_location="right", cbar_mode="single", cbar_size="7%", cbar_pad="2%", )
+
+	for ax, p in zip(grid, projections):
+		img = skymodel_ratio( diskname=diskname[:-2] + p, margin=margin, figure=False)
+		im = ax.imshow( img, origin='lower', cmap='turbo_r', vmin=1.5)
+		ax.annotate( p, (0.5, 0.9), xycoords='axes fraction', ha='center', color='white', alpha=0.8)
+		ax.axis('off')
+
+	grid.cbar_axes[0].colorbar( im, label=r'$\alpha_\mathrm{(3-7)mm}$')
+	[ fig.savefig( savedir_prefix + ptitle.replace(' ', '_') + '-' + diskname[:-3] + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	plt.show()
+
 
 
 def plot_sample_props( results_dir, run_name, analistdir, bins='doane'):
@@ -342,7 +398,7 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True):
 	plt.close()
 
 	if not simple_M: 
-		ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=[0, 2.9])
+		ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=[0, 2.9])	# fixed x axis for comparisons
 		ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins='doane')
 
 
@@ -595,7 +651,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	Analyse the bestfit parameters of the whole sample and the derived quantities, comparing them to the simulation truths.   
 	'''
 	print( '\nPerforming MAIN analysis of the sample.')
-	v_obs = 299792458.0/wle			# [Hz]		# 100 *1e9   obs frequency
+	v_obs = 299792458.0/wle			# [Hz]			# 100 *1e9   obs frequency
 	k_sim = 0.54 if round(wle*1e3)==3 else 0.138	# opTool original opacity for the simulation truths
 	if round(wle*1e3)==1: k_sim = 3.5
 	k_obs = k_sim # kappa_empir( v_obs, beta=1.5)	# 1.5 good for both 3mm and 7mm (not 0.9mm) # for the OBS # [cm2 / g]
@@ -1181,7 +1237,7 @@ if __name__=='__main__':
 		analistdir = ''
 	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_suffix )
 
-	# rdf = main_analysis( analist, wle, savedir, config_name, run_suffix, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	rdf = main_analysis( analist, wle, savedir, config_name, run_suffix, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
 	# # fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# # inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# # plot_correlations( rdf, run_name=run_suffix )
@@ -1197,26 +1253,3 @@ if __name__=='__main__':
 	#                     alpha_Menv_plot( model=mod, quantity=q )
 
 
-
-# Texp = 3600
-# model_comps = '2c'
-# xsrc_flag = 'xsrc'
-# wle = 0.003
-# folder_wle = f'{round(wle*1e3)}mm/'
-# savedir = savedir_prefix + folder_wle + f'run_{Texp}s_{model_comps}_{xsrc_flag}/'
-# run_name = f' - { folder_wle.strip("/") }  {Texp}s  {model_comps}'
-# config_name = 'alma.cycle11.7' 
-# diskname = 'disk53_xz'
-
-# rdf = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')
-# # plot_correlations( rdf, run_name )
-
-# ptitle = 'Mass env'
-# fig, ax = plt.subplots( )
-# fig.suptitle( ptitle )
-# ax.scatter(  rdf.Mcyl , rdf.Fv_env, alpha=0.7 )
-# [ax.text( s=rdf.index[i], x=rdf.Mcyl[i],  y=rdf.Fv_env[i], horizontalalignment='left', verticalalignment='top', fontsize=5 ) for i in range(len(rdf)) ]
-# ax.set(  xlabel= ' Menv', xscale='log', ylabel= ' Fv_env', yscale='log')
-# # fig.supylabel( r'$\delta_M$', fontsize=12 )
-# # [ fig.savefig( ptitle + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-# plt.show()
