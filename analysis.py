@@ -180,6 +180,31 @@ def skymodel_ratiosplot( diskname, projections=['xy', 'yz'], margin=25, fs=(5.2,
 	plt.show()
 
 
+def compare_distros( df, var='i_sim', condition="M_obs / M_sim *100 < 1", bins='doane', sampcol='mediumorchid', wle=3):
+	def darken_edge( col):
+		return tuple( np.clip( np.array( mpl.colors.to_rgb( col) ) * 0.8, 0, 1))		# compute a slightly darker edge color automatically
+
+	# condition = "M_obs / M_sim *100 < 1"		# "df.M_obs/df.M_sim*100 < 1"
+	# df.M_sim = rdf.M_sim /100		# no puedo perché modifica l'originale
+	filt = df.query( condition)[var]
+	sample = df[var]
+	style = { 'linewidth': 1.5, 'zorder':2}
+
+	ptitle = f'{var} [{condition}] {wle}mm'
+	fig, ax = plt.subplots( figsize=(3,3.3), sharex=True, layout='tight')
+	axins = ax.inset_axes( [0,-0.3 , 1, 0.26] )
+	axs = [ax, axins]
+	fig.subplots_adjust( bottom=0.3 )
+	hs = axs[0].hist( sample, bins=bins, color=sampcol, **style, edgecolor=darken_edge(sampcol), alpha=0.92, label='MHD sample')
+	hf = axs[0].hist( filt, bins=hs[1], color='grey', **style, edgecolor=darken_edge('grey'), alpha=0.9, label= condition)
+	axs[1].stairs(  hf[0]/hs[0], edges=hs[1], color=sampcol, **style, baseline=None, alpha=0.9, label='cond/sample')
+	axs[0].set( xlabel=var, ylabel='count')
+	axs[1].set( xlabel=var, ylabel='ratio')
+	axs[0].legend()
+	fig.canvas.manager.set_window_title( ptitle.replace(' ','_') )
+	#axs[1].legend()
+	plt.show()
+
 
 def plot_sample_props( results_dir, run_name, analistdir, bins='doane'):
 	os.chdir( results_dir )
@@ -467,6 +492,10 @@ def plot_inc_compare( df, run_name, analistdir):
 	plt.close()
 
 
+# def column_plotter():
+
+
+
 def rms( arr ):
 	return np.sqrt( np.sum( arr**2 ) / len( arr.flatten() ) )
 
@@ -724,7 +753,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	
 	os.chdir( results_dir )
 	res_df.to_csv( f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t') #, float_format='%.2e')
-	# res_df = pd.read_csv( f'analysis_results-{run_name}.txt', sep='\t', index_col='source')	# to load it
+	# res_df = pd.read_csv( f'f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')	# to load it
 	
 	if figures:
 		# plot_opacity()
@@ -926,7 +955,6 @@ def median_alpha_plot( alphalist, uvd, model, quantity):
 	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
 	# plt.show()
 	[fig.savefig( ptitle.replace(' ', '_') + quantity + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
-
 
 
 
@@ -1226,7 +1254,7 @@ if __name__=='__main__':
 	conf_flag = 'CC' if args['compconf'] else 'SC'
 	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/' 		# results directory name
 
-	run_suffix = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps} {conf_flag}'
+	run_name = f'-{ folder_wle.strip("/") } {args["Texp"]}s {model_comps} {conf_flag}'
 	os.makedirs( savedir + 'Figures_png/', exist_ok=True ) ; os.makedirs( savedir + 'Figures_pdf/', exist_ok=True )
 	if args["fullsamp"]:
 		analist = OKlist
@@ -1237,7 +1265,8 @@ if __name__=='__main__':
 		analistdir = ''
 	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_suffix )
 
-	rdf = main_analysis( analist, wle, savedir, config_name, run_suffix, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	#rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
 	# # fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# # inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# # plot_correlations( rdf, run_name=run_suffix )
