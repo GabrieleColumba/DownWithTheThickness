@@ -11,7 +11,6 @@ import pandas as pd
 # import scipy.integrate as si
 import astropy.units as u
 from astropy import constants as const
-import casatools as cto
 # import emcee, corner
 from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
@@ -19,7 +18,7 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
 from local_variables import *
 from visibfit_functions import crop_image
-plt.rcParams.update({ 'font.size':9, 'legend.fontsize':8, 'figure.dpi':200})
+plt.rcParams.update({ 'font.size':9, 'legend.fontsize':8, 'errorbar.capsize':2, 'scatter.edgecolors':'None', 'figure.dpi':200})
 
 tungslist = np.array([17, 20, 30, 42, 50, 52, 53, 57, 65, 67, 70, 78, 79]) 		# disk numbers fitted in Tung+24, wb 43 ?? not shown
 OKlist =    np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 82, 83, 43]) 	# (70, 78, 29, 52 no bc binary, , 63 75 no bc no info in truths)
@@ -146,10 +145,11 @@ def skymodel_ratio( diskname , folder_wles=[3000,7000], margin=None, figure=True
 	
 	skycut_ratio = - np.log10( skycut_3 / skycut_7) / np.log10( 3 / 7 )
 	if figure:
-		plt.figure( figsize=(4,4))
+		plt.figure( figsize=(4.5,4.5))
 		plt.imshow(  skycut_ratio[:, ::-1 ], origin='lower', cmap='inferno_r')	# norm=mpl.colors.LogNorm( vmin=None, vmax=None)
 		plt.colorbar()
-		plt.contour( skycut_7[:, ::-1 ], levels=7, origin=None)
+		# plt.contour( skycut_3[:, ::-1 ], levels=5, origin=None)
+		plt.contour( skycut_ratio[:, ::-1 ], levels=[2], colors='w', origin=None)
 		plt.axis( 'off' )
 		# plt.savefig( 'sky_model' + fig_ext, bbox_inches='tight', dpi=300)
 		plt.show()
@@ -160,7 +160,7 @@ def skymodel_ratio( diskname , folder_wles=[3000,7000], margin=None, figure=True
 
 def skymodel_ratiosplot( diskname, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4)):
 	'''
-	Extra figure for visualising the ratio on the skymodels of a disc seen in two projections. With a fraking well-behaving colorbar, jeez.
+	Extra figure for visualising the ratio on the skymodels of a disc seen in two projections. With a freaking well-behaving colorbar, jeez.
 	'''
 	from mpl_toolkits.axes_grid1 import AxesGrid
 	ptitle = 'Sky model spectral index'
@@ -170,7 +170,11 @@ def skymodel_ratiosplot( diskname, projections=['xy', 'yz'], margin=25, fs=(5.2,
 		cbar_location="right", cbar_mode="single", cbar_size="7%", cbar_pad="2%", )
 
 	for ax, p in zip(grid, projections):
-		img = skymodel_ratio( diskname=diskname[:-2] + p, margin=margin, figure=False)
+		try:
+			img = skymodel_ratio( diskname=diskname[:-2] + p, margin=margin, figure=False)
+		except:
+			print( p, 'projection not found!')
+			continue
 		im = ax.imshow( img, origin='lower', cmap='turbo_r', vmin=1.5)
 		ax.annotate( p, (0.5, 0.9), xycoords='axes fraction', ha='center', color='white', alpha=0.8)
 		ax.axis('off')
@@ -194,7 +198,7 @@ def compare_distros( df, var='i_sim', condition="M_obs / M_sim *100 < 1", bins='
 	fig, ax = plt.subplots( figsize=(3,3.3), sharex=True, layout='tight')
 	axins = ax.inset_axes( [0,-0.3 , 1, 0.26] )
 	axs = [ax, axins]
-	fig.subplots_adjust( bottom=0.3 )
+	fig.subplots_adjust( bottom=0.3 )		# makes space for the inset in the figure area
 	hs = axs[0].hist( sample, bins=bins, color=sampcol, **style, edgecolor=darken_edge(sampcol), alpha=0.92, label='MHD sample')
 	hf = axs[0].hist( filt, bins=hs[1], color='grey', **style, edgecolor=darken_edge('grey'), alpha=0.9, label= condition)
 	axs[1].stairs(  hf[0]/hs[0], edges=hs[1], color=sampcol, **style, baseline=None, alpha=0.9, label='cond/sample')
@@ -240,8 +244,8 @@ def plot_sample_props( results_dir, run_name, analistdir, bins='doane'):
 
 
 def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
-						fmt='o', facecolor='C0', edge_darken=0.9, ecolor=None,
-						capsize=3, marker_alpha=0.8, err_alpha=0.25, label=None, **kwargs):
+						fmt='o', facecolor='C0', edge_darken=0.9, ecolor=None, # capsize=3
+						marker_alpha=0.8, err_alpha=0.25, label=None, **kwargs):
 	'''
 	Draw scatter points with asymmetric errorbars.
 	- x, y : 1D arrays
@@ -269,15 +273,15 @@ def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
 	# 						ecolor=ecolor, elinewidth=1, capsize=capsize, alpha=alpha, label=label, **kwargs)
 	
 	# draw errorbar container with overall alpha=1 (we'll set parts individually)
-	plotline, caplines, barlines = ax.errorbar( x, y, xerr=xerr, yerr=yerr, fmt=fmt, markerfacecolor=facecolor, markeredgecolor=facecolor,
-					ecolor=ecolor, elinewidth=1, capsize=capsize, alpha=marker_alpha, label=label, **kwargs)
+	plotline, caplines, barlines = ax.errorbar( x, y, xerr=xerr, yerr=yerr, fmt=fmt, markerfacecolor=facecolor, markeredgecolor='None',
+					ecolor=ecolor, elinewidth=1, alpha=marker_alpha, label=label, **kwargs)
 
 	[bar.set_alpha(err_alpha) for bar in barlines]
 	[cap.set_alpha( err_alpha) for cap in caplines]
 	return # markerline
 
 
-def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None, figsz=3.5):
+def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None, y_max=0, figsz=3.5, Ax=None):
 	'''
 	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
 	'''
@@ -294,22 +298,29 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 	edge_rgb = tuple(np.clip(base_rgb * darken_factor, 0, 1))
 	style = {'edgecolor': edge_rgb, 'linewidth': 1.5, 'zorder':2}
 
-	ptitle =  f'{var1.name}_{var2.name} ratio' + run_name
-	shortle = run_name[1:4] + f' {var1.name[0]} ratio' 
-	fig, ax = plt.subplots( figsize=(figsz, figsz), tight_layout=True )
-	# fig.suptitle( ptitle )
+	if Ax == None:
+		ptitle =  f'{var1.name}_{var2.name} ratio' + run_name
+		shortle = run_name[1:4] + f' {var1.name[0]} ratio' 
+		fig, ax = plt.subplots( figsize=(figsz, figsz), tight_layout=True )
+	else: ax = Ax
 	q16, median_r, q84 = np.nanquantile( ratio, [0.16, 0.5, 0.84])
 	hh = ax.hist( x=ratio, bins=bins, range=xlims, color=histcolor, histtype='bar', **style , alpha=0.85) #, label=f'ratio, $\sigma$={np.nanstd( ratio ) :.2f}')
 	ax.axvline( x=1, ls='--', lw=2.5, c='k', alpha=0.99)
-	ax.axvline( x=median_r, ls='-.', lw=2, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
-	ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
-	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 2, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
-		label='(16-84)%' + '\n' + f'$\Delta/2={ (q84 - q16)/2 :.2f}$' )		# take the maximum of the hist for upper y2 limit.    $\sigma={ np.nanstd(ratio) :.2f}$'
-	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hh[0].max() + 2], title=shortle )	# , xlim=xlims
+	ax.axvline( x=median_r, ls='-.', lw=2.5, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
+	# ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
+	ymax = max( ax.get_ylim()[1] +0.5, y_max)
+	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 100, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
+				label='(16-84)%' + '\n' + f'$\Delta/2={ (q84 - q16)/2 :.2f}$' ) 
+	ax.set( xlabel= f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, ymax] )	# , xlim=xlims
 	ax.legend()
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	# plt.show()
-	plt.close()
+	ax.text( x=0.88, y=0.5, s=run_name[1:4], ha='center', va='center', transform=ax.transAxes, 
+		 color='k', fontweight='bold', bbox=dict(boxstyle='round', fc="w", ec="k"))
+	
+	if Ax==None:
+		ax.set( title=shortle)
+		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		plt.close()
+	else: return None
 
 
 def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name='', analistdir='OKlist/', errors=True):
@@ -390,7 +401,7 @@ def plot_mass_env( df, run_name, analistdir ):
 	plt.close()
 
 
-def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True):
+def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True, Ax=None, fs=(3,3.1)):
 	'''
 	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
 	'''
@@ -404,30 +415,38 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True):
 	T_label = f'_T{Tavg :1.0f}K' if simple_M else '_T(r)'
 
 	ptitle = 'Disk mass comparison' + run_name
-	shortle = run_name[1:4] + ' disc mass' 
-	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True )
+	shortle = 'Disc mass'  # run_name[1:4] + 
+	if Ax == None:
+		fig, ax = plt.subplots( figsize=fs, tight_layout=True)
+	else : 
+		ax = Ax
 	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
 	if errors: 
-		scatter_with_errors( ax=ax, x= df.M_sim/100, y=M_obs, y_lo=M_obs_lo, y_up=M_obs_up, fmt='o', facecolor='tab:red', marker_alpha=0.76 )
+		scatter_with_errors( ax=ax, x= df.M_sim/100, y=M_obs, y_lo=M_obs_lo, y_up=M_obs_up, fmt='o', facecolor='tab:red', marker_alpha=0.7 )
 	else:	ax.scatter( x=df.M_sim/100, y=M_obs, marker='o', c='r', alpha=0.7)		# observed fluxes
 	# ax.text( x=0.01, y=0.85, s= f'median accuracy: {qs[0] :1.1f}x \n$\sigma =${np.std(M_obs - df.M_sim/100) :1.1f}' + '[M$_{\odot}$]',
 	# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
-	ax.text( x=0.01, y=0.85, s= f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)',
-		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=12, alpha=1.)
-	ax.text( x=0.01, y=0.92, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
-		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
-	axlims = [ 3e-5, 1.2e-2]
-	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xscale='log', yscale='log', xlim=axlims, ylim=axlims, aspect='equal', title=shortle )
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	# plt.show()
-	plt.close()
+	ax.text( x=0.01, y=0.86, s= f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)',
+		ha='left', va='center', transform=ax.transAxes, color='gray', alpha=1.)
+	ax.text( x=0.01, y=0.76, s= f'16%-84% accuracy: \n{qs[0] :1.1f}x - {qs[2] :1.1f}x',
+		ha='left', va='center', transform=ax.transAxes, fontsize='small', color='gray', alpha=0.8)
+	ax.text( x=0.5, y=0.93, s=run_name[1:4], ha='center', va='center', transform=ax.transAxes, 
+		 color='k', fontweight='bold', bbox=dict(boxstyle='round', fc="w", ec="k"))
+	axlims = [ 2e-5, 3e-2]
+	ax.set( xlabel= r'$ M_\mathrm{sim} $ [M$_{\odot}$]', ylabel=r'$ M_\mathrm{obs} $ [M$_{\odot}$]', xlim=axlims, ylim=axlims, aspect='equal' )
 
-	if not simple_M: 
-		ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=[0, 2.9])	# fixed x axis for comparisons
-		ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins='doane')
+	if Ax==None: 
+		ax.set( xscale='log', yscale='log') ; ax.set_title( shortle, fontsize='medium')
+		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + T_label + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		plt.close()
+		if not simple_M: 
+			ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=[0, 2.9])	# fixed x axis for comparisons
+			ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins='doane')
+	else:
+		return None
 
 
-def plot_radius_compare( df, res_limit, run_name, analistdir, errors=True, r95=True):
+def plot_radius_compare( df, res_limit, run_name, analistdir, errors=True, r95=True, Ax=None, fs=(3,3.1)):
 	'''
 	Assuming R_obs is R_95, in [au] if r95=True, else R_90. 
 	'''
@@ -446,54 +465,110 @@ def plot_radius_compare( df, res_limit, run_name, analistdir, errors=True, r95=T
 	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
 
 	ptitle = 'Radius comparison' + run_name
-	shortle = run_name[1:4] + ' disc radius' 
-	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
+	shortle = 'Disc radius' 
+	if Ax == None:
+		fig, ax = plt.subplots( figsize=fs, tight_layout=True)
+	else : 
+		ax = Ax
 	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
 	#ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
 	if errors:
 		scatter_with_errors( ax=ax, x=df.R_sim *au_to_as, y=df.R_obs*au_to_as, y_lo=df.R_obs_lo*au_to_as, y_up=df.R_obs_up*au_to_as,
-					fmt='o', facecolor='g', label=lab_err, marker_alpha=0.7 )
+					fmt='o', facecolor='g', label=lab_err, marker_alpha=0.6 )
 	else:
 		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label=lab_err, alpha=0.7, zorder=3.7)		# observed radii
 	ax.scatter( x=df.R_sim *au_to_as, y=not_R_obs *au_to_as, marker='o', c='b', label=lab_sca, alpha=0.2)
-	ax.text( x=0.01, y=0.85, s=(f'obs/sim accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.2f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
-		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.2f}x'),
-		ha='left', va='center', transform=ax.transAxes, color='k', fontsize=10, alpha=0.8)
-	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' , xscale='log', yscale='log',
-		 title=shortle, xlim=[0.05,2.1], ylim=[0.05, 2.1], aspect='equal' )
-	# ax.grid( True, axis='x', alpha=0.5, linestyle=':')
-	ax.legend( loc='lower right')
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-	# plt.show()
-	plt.close()
+	ax.text( x=0.01, y=0.76, s=(f'accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.2f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
+		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.2f}x'), ha='left', va='center', transform=ax.transAxes, color='k', fontsize='small', alpha=0.8)
+	ax.set( xlabel= r'$ R_\mathrm{sim} $ [arcsec]', ylabel=r'$ R_\mathrm{obs} $ [arcsec]' ,# xscale='log', yscale='log',
+		xlim=[0.05,2.1], ylim=[0.05, 2.1], aspect='equal' )
+	ax.text( x=0.5, y=0.93, s=run_name[1:4], ha='center', va='center', transform=ax.transAxes, 
+		 color='k', fontweight='bold', bbox=dict(boxstyle='round', fc="w", ec="k"))
 
-	ratio_histogram( df.R_obs, df.R_sim, run_name, analistdir, histcolor='tab:green', bins=9, xlims=[0.2, 2.5])
-	ratio_histogram( df.R_obs, df.R_sim, run_name, analistdir, histcolor='tab:green', bins='doane')
+	if Ax==None: 
+		ax.set( title=shortle, xscale='log', yscale='log')
+		ax.legend( loc='lower right')
+		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		plt.close()
+
+		ratio_histogram( df.R_obs, df.R_sim, run_name, analistdir, histcolor='tab:green', bins=9, xlims=[0.2, 2.5])
+		ratio_histogram( df.R_obs, df.R_sim, run_name, analistdir, histcolor='tab:green', bins='doane')
+	else:
+		return None
 
 
-def plot_inc_compare( df, run_name, analistdir):
+def plot_inc_compare( df, run_name, analistdir, Ax=None, fs=(3,3.1)):
 	'''
 	Assuming inc in [deg]. 
 	'''
 	qs = np.nanquantile( df.i_obs / df.i_sim, [0.16, 0.5, 0.84] )
-
-	ptitle = 'Inclination comparison' + run_name
-	shortle = run_name[1:4] + ' disc inclination' 
-	fig, ax = plt.subplots( figsize=(4,4), tight_layout=True)
+	if Ax == None:
+		shortle = 'Disc inclination' 
+		ptitle = 'Inclination comparison' + run_name
+		fig, ax = plt.subplots( figsize=fs, tight_layout=True)
+	else:
+		ax = Ax
 	ax.axline( xy1=(1, 1), slope=1, ls='--', c='gray' )		# y=x identity
-	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.9, err_alpha=0.27 )
+	scatter_with_errors( ax=ax, x=df.i_sim, y=df.i_obs, y_lo=df.i_obs_lo, y_up=df.i_obs_up, fmt='o', facecolor='C1', marker_alpha=.75, err_alpha=0.27 )
 	# ax.scatter( x=inc, y=df.i_obs, marker='o', c='orange', alpha=0.8)
-	ax.text( x=0.01, y=0.92, s= f'16%-84% accuracy: {qs[0] :1.1f}x - {qs[2] :1.1f}x',
-		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
-	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', aspect='equal', xlim=[0,90], ylim=[0,90], title=shortle )
-	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf')]
-	# plt.show()
-	plt.close()
+	ax.text( x=0.01, y=0.8, s= f'16%-84% accuracy: \n{qs[0] :1.1f}x - {qs[2] :1.1f}x',
+		ha='left', va='center', transform=ax.transAxes, color='gray', fontsize='small', alpha=0.8)
+	ax.text( x=0.5, y=0.93, s=run_name[1:4], ha='center', va='center', transform=ax.transAxes, 
+		 color='k', fontweight='bold', bbox=dict(boxstyle='round', fc="w", ec="k"))
+	ax.set( xlabel= r'$ i_\mathrm{sim} $ [deg]', ylabel=r'$ i_\mathrm{obs} $ [deg]', aspect='equal', xlim=[-2,94], ylim=[-2,94] )
+	
+	if Ax == None:
+		ax.set( title=shortle)
+		[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf')]
+		plt.close()
+	else:
+		return None
 
 
-# def column_plotter():
+def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,3600,10800]):
+	'''
+	Create vertical triple plots of the comparison between Obs/sim quantities [radii, mass, inc].
+	'''
+	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':8, 'lines.markersize':5.5, 'figure.dpi':300})
+	wles = [1, 3, 7]	# [mm]
+	configs = ['4', '7', '8']
+	varnames = ['radius', 'mass', 'inclination']
 
+	for var in varnames:
+		ptitle = 'Disc ' + var 
+		fig, axs = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey=True )
+		ptitle_r = var.title() + ' ratio' 	; y_max=0
+		fig_r, axs_r = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey=True )
+
+		for i in range(len( wles)):
+			folder_wle = f'{round( wles[i])}mm/'
+			savedir = savedir_prefix + folder_wle + f'run_{Texps[i]}s_{model_comps}_{xsrc_flag}_{conf_flag}/' 		# results directory name
+			run_name = f'-{ wles[i]}mm {Texps[i]}s {model_comps} {conf_flag}'
+			df = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+			if var == varnames[0]:
+				res = alma_resolution( wle=wles[i]/1000, config_name=configs[i])
+				plot_radius_compare( df, res, run_name, analistdir, errors=True, Ax=axs[i])
+				ratio_histogram( df.R_obs, df.R_sim, run_name, analistdir, histcolor='tab:green', bins=9, xlims=[0.2,  2.5], y_max=y_max, Ax=axs_r[i])
+			elif var == varnames[1]:
+				plot_mass_compare( df, run_name, 122, False, analistdir, errors=True, Ax=axs[i])
+				ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=[0, 2.9], y_max=y_max, Ax=axs_r[i])
+			elif var == varnames[2]:
+				plot_inc_compare( df, run_name, analistdir, Ax=axs[i])
+				ratio_histogram( df.i_obs, df.i_sim/100, run_name, analistdir, histcolor='tab:orange', bins=8, xlims=[0, 90], y_max=y_max, Ax=axs_r[i])
+			if i==0: 	
+				axs[i].set( title=ptitle) ; axs_r[i].set( title=ptitle_r )
+				if var == varnames[0]: axs[i].legend( loc='lower right')	
+		
+		if var != 'inclination': axs[i].set( xscale='log', yscale='log')
+		fig.subplots_adjust( hspace=0 ) ; fig_r.subplots_adjust( hspace=0 )
+		[ fig.savefig( savedir_prefix + ptitle.replace(' ', '_')  + '-3plot' + f'_{conf_flag}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		[ fig_r.savefig( savedir_prefix + ptitle_r.replace(' ', '_')  + '-3plot' + f'_{conf_flag}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		print( ptitle, '3-plots saved')
+		plt.close()
+	
+
+	#plt.show()
 
 
 def rms( arr ):
@@ -516,6 +591,7 @@ def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
 	'''
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
+	import casatools as cto
 	os.chdir( results_dir + diskname )
 	table = cto.table()
 	table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )		# noisy image, with pbcor the central target is slightly under corrected?
@@ -817,6 +893,7 @@ def assess_SNR( results_dir, config_name, run_name ):
 	'''
 	Evaluate the SNR of the cleaned image across the entire sample in results_dir. 
 	'''
+	import casatools as cto
 	fitslist = sorted( glob.glob( results_dir + 'disk*') )
 	print( len(fitslist), 'files found')
 	SNRs = []
@@ -1181,6 +1258,7 @@ def collective_residuals_plot( results_dir, run_name, as_margin=2, targetslist=O
 	'''
 	Make uvplots of all regressed targets in one figure
 	'''
+	import casatools as cto
 	plt.rcParams.update({ 'font.size':7, 'legend.fontsize':7, 'figure.dpi':200})
 	mpl.style.use('fast')
 
@@ -1265,8 +1343,11 @@ if __name__=='__main__':
 		analistdir = ''
 	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_suffix )
 
-	#rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
-	rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+	# rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	#rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+	column_plotter( analistdir, conf_flag, model_comps, xsrc_flag )
+	# os.chdir( savedir )
+	# plot_mass_compare( rdf, run_name, Tavg=args['Tavg'], simple_M=False, analistdir=analistdir, fs=(4,4))
 	# # fit_Mobs( results_dir=savedir, run_name=run_suffix, logfit=True)
 	# # inspect_plots( two_comp=args['2c'], results_dir=savedir )
 	# # plot_correlations( rdf, run_name=run_suffix )
