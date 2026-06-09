@@ -999,7 +999,7 @@ def mcmc_regress( diskname, nsteps, two_components=True, Ncpu=None, savedir='', 
 						[-2, 2]])		# dDec (arcsec)
 
 	# initial guess for the parameters
-	p0_2c = np.array([11, 8.4, 0.2, 0.3, 6, 2.5, 80., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
+	p0_2c = np.array([11, 8.4, 0.2, 0.4, 6, 2.5, 60., 45., 0., 0.]) 	# Log(I0), Log(Ienv), sma, Rin, Rout/Ri, p_idx, (inc, PA, dRA, dDec)
 	p0_gauss = np.array([12, 0.2, 80., 45., 0., 0.])				# Log(I0), sma, inc, PA, dRA, dDec
 	if two_components:
 		p0_mc = p0_2c
