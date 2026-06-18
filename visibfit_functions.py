@@ -538,10 +538,12 @@ def prepare_sky_model( filename, data_folder, savedir, damp, monosource, nRMS=1,
 	hdr['CTYPE1'] = 'RA---SIN'; hdr['CTYPE2'] = 'DEC--SIN'; 		# uniform it to CASA products
 	fits.writeto( 'skycut.fits', np.float32( skycut ), header=hdr, overwrite=True)
 	
-	plt.imshow(  np.clip( skycut[:, ::-1 ], a_min=1e-8, a_max=None), 		# 1e-8 Jy/pix should be a fair rms low bound
-			origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')
-	plt.axis( 'off' )
-	plt.savefig( 'sky_model' + fig_ext, bbox_inches='tight', dpi=300)
+	ptitle = 'Sky model'
+	fig, ax = plt.subplots( figsize=(6, 5.5) )  
+	ci = ax.imshow( skycut[:, ::-1 ]*1000, origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=max(1e-4, skycut.min()*1000), vmax=None, clip=True) ) 
+	ax.set( title=ptitle, ) ; ax.axis( 'off' )
+	fig.colorbar( ci, ax=ax, shrink=0.8, pad=0.00, label=r'$I_\nu$ [mJy/pix]')
+	fig.savefig( ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
 
@@ -614,16 +616,16 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 					vis= MSname, imagename=f'./xsrc_sub/{config}_rough', datacolumn='corrected', 
 					imsize=extra_sources[0].shape, cell = f'{extra_sources[1]}rad',
 					phasecenter='ICRS 16h26m28.2s  -24d24m06.12s', #deconvolver='clark', 
-					weighting='briggs', niter=50, nsigma=3, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
+					weighting='briggs', niter=50, nsigma=1, threshold=f'{analytic_sensitivity(t=T_exp) :.4f}mJy'  ) 
 				
 				casa_table.open( f'./xsrc_sub/{config}_rough.image' )		# the one created above, in [Jy/beam]
 				img = casa_table.getcol('map').squeeze().copy( order='F') 		# best model img				
 				casa_table.close()
-				ptitle = 'Target - xsrc (quick clean)' 
-				fig, ax = plt.subplots( figsize=(6,6))  
+				ptitle = 'Obs - extra sources subtracted'	# 'Target - xsrc (quick clean)' 
+				fig, ax = plt.subplots( figsize=(6,5.5))  
 				ci = ax.imshow( img.T , origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=1e-6, vmax=None, clip=True) )    # transpose to have as sky model
 				ax.set( title=ptitle, ) ; ax.axis( 'off' )
-				fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
+				fig.colorbar( ci, ax=ax, shrink=0.8, pad=0.00, label=r'$I_\nu$ [Jy/beam]')
 				fig.savefig( ptitle.replace(' ', '_') + config + fig_ext , bbox_inches='tight', dpi=200)
 				plt.close()
 				
@@ -635,6 +637,67 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 
 	return print( '\nMock observation completed !\n')
 
+
+
+def triplot( diskname, MSname, run_name, as_margin=7., rulersize=1000, savedir=''):
+	'''
+	Just plot together in a nice cut three panels about a target: sky model, mock-obs, mockobs-xsrc. Inspired by pentaplot().
+	'''
+	os.chdir( savedir + diskname )
+	hdul = fits.open( 'skycut.fits' )			# load sky model 
+	pixscale_s = hdul[0].header['CDELT1']		# [deg / pix]
+	sky_image = hdul[0].data #.byteswap().newbyteorder() 
+	pixcut = int( as_margin / (pixscale_s * 3600) )			# margin in pixel
+	skycut = crop_image( sky_image, margins=[ pixcut, pixcut])[:, ::-1 ] * 1000		# [mJy/pix] 
+	xc, yc = np.array( skycut.shape ) / 2
+
+	ct = cto.table()
+	ct.open( f"{MSname.replace('.ms', '')}.image" )		# cleaned simanalyze simulation image
+	noisy_img = ct.getcol('map').squeeze().copy( order='F').T
+	pixscale_m = np.rad2deg( abs( ct.getkeyword('coords')['direction0']['cdelt'][0]) ) * 3600		# [arcsec/pix]
+	beam_dict = ct.getkeyword('imageinfo')['restoringbeam']						# a, b and PA of beam [", ", deg]
+	bmaj = beam_dict['major']['value'] / pixscale_m 
+	bmin = beam_dict['minor']['value'] / pixscale_m; PA = beam_dict['positionangle']['value']	
+	
+	config = MSname[10:].replace( '.noisy.ms', '')		# discard the first 9 letters as diskname (NN format) and the following part
+	ct.open( f'./xsrc_sub/{config}_rough.image' )		# after xsrc subtraction, in [Jy/beam]
+	xsrc_sub = ct.getcol('map').squeeze().copy( order='F').T 
+	ct.close()
+
+	rms = min_bkg_rms( noisy_img )
+	modlist = [noisy_img, xsrc_sub]
+	pixcut_m = int( as_margin / pixscale_m )		# margin in pixel
+	for i in range(len(modlist)):
+		modlist[i] = crop_image( modlist[i], margins=[ pixcut_m, pixcut_m])
+
+	ptitles = ['Sky model', 'Mock observation', 'Obs - extra sources subtracted']
+	units = ['mJy/pix', 'Jy/beam', 'Jy/beam']
+	fig, axes = plt.subplots( 1,3, figsize=(12,5.5), layout='tight' ) #; axes[1,2].set_visible(False)		# hide unused axes
+	axs = axes.flatten()
+	skyc = axs[0].imshow( skycut,     origin='lower', norm=mpl.colors.LogNorm(), cmap='viridis')
+	obsc = axs[1].imshow( modlist[0], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
+	xsrc = axs[2].imshow( modlist[1], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
+	rls_pix = rulersize * 1/140 / (pixscale_s *3600)		# [au * arcsec/au * pix/arcsec]
+	axs[0].plot( [xc - 0.5*rls_pix, xc + 0.5*rls_pix], (yc - 0.9*pixcut )*np.array([1,1]), c='w', lw=2, alpha=.9)		# ruler patch
+	axs[0].text( xc-0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize :3.0f} au', color='w', ha='right', va='center', alpha=.8, fontsize=8) 
+	axs[0].text( xc+0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize/140 :0.2f}"', color='w', ha='left', va='center', alpha=.8, fontsize=8)
+	axs[1].text( x=0.5, y=0.05, s= f'bkg RMS={rms :1.1e} Jy/beam', ha='center', va='center', transform=axs[1].transAxes, color='gray', fontsize=8, alpha=1)
+	
+	for i, cb in enumerate([skyc, obsc, xsrc]):
+		fig.colorbar( cb, ax=axs[i], shrink=0.58, pad=0.00, label=units[i])
+		if i > 0: 		# add beam size patch
+			width_frac = bmaj / modlist[i-1].shape[1] ; height_frac = bmin / modlist[i-1].shape[0]
+			beam_patch = mpl.patches.Ellipse( (0.1, 0.1), width=width_frac, height=height_frac, angle=90 + PA, 
+						transform=axs[i].transAxes, facecolor='w', edgecolor='w', linewidth=0, alpha=1 )
+			axs[i].add_patch( beam_patch )
+		axs[i].set( title= ptitles[i], aspect='equal')	#, fontsize=9)
+		# axs[i].axis('off')
+		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
+
+	#fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
+	# plt.show()
+	fig.savefig( f'Triplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=400)
+	plt.close()
 
 
 def rms( arr ):
@@ -875,7 +938,7 @@ def pentaplot( diskname, MSname, bestfit_pars, galargs, two_comp, wle, run_name,
 	
 	for i, cb in enumerate([simc, obsc, resc, modc]):
 		fig.colorbar( cb, ax=axs[i], shrink=0.8, pad=0.00, label=units[i])
-		if i > 0: 
+		if i > 0: 		# add beam size patch
 			width_frac = bmaj / modlist[i-1].shape[1] ; height_frac = bmin / modlist[i-1].shape[0]
 			beam_patch = mpl.patches.Ellipse( (0.1, 0.1), width=width_frac, height=height_frac, angle=90 + PA, 
 						transform=axs[i].transAxes, facecolor='gray', edgecolor='gray', linewidth=1, alpha=1 )
