@@ -80,7 +80,11 @@ if __name__=='__main__':
 							data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
 				mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
 							Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
-	
+				pass
+
+			# MSname = f'{diskname}.concat.noisy.ms' if args['compconf'] else f'{diskname}.{config_name}.noisy.ms'
+			# run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
+			# triplot( diskname, MSname, run_name, as_margin=10, rulersize=500, savedir=savedir)
 			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 			
 			if args['compconf']:
