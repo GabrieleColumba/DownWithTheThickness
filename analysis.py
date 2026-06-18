@@ -25,7 +25,7 @@ OKlist =    np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 82, 83, 43]) 	
 prettylist =np.array([17, 20, 30, 42, 50, 53, 57, 65, 67, 72, 79, 83])			# 43 misterious and thick, 82 bahh
 # pixscale = 9.92063492063492e-6      	# deg
 # sr_to_pix = np.deg2rad( pixscale )**2   # convert Jy/sr to Jy/pix
-dist = 140 *u.pc  # parsec
+dist = 140 *u.pc  # parsec	[1pc = 206265 au]
 au_to_rad = 1 / dist.to_value(u.au)
 au_to_as = 1 / dist.to_value(u.au) * 180 / np.pi * 3600		# from au to arcsec
 # Rmax = 8	# [arcsec]		# issue is the min baselines not the Rmax really
@@ -68,9 +68,9 @@ def kappa_empir( v_obs, beta):
 	return kappa
 
 
-def temp_profile_Tung( lum, r):
+def temp_profile_Tung( lum, r, T0=71):
 	'''Average T(r) profile from Tung24 fit. lum=Lint+Lacc in [Lsun] and r in [au]. '''
-	return lum**0.25 * ( r / 35 )**(-0.52) * 71   # Kelvin
+	return lum**0.25 * ( r / 35 )**(-0.52) * T0   # Kelvin
 	#return lum**0.25 * ( r / 50 )**(-0.22) * 36   # Kelvin	(Max's fit formula)
 
 
@@ -283,7 +283,7 @@ def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
 	return # markerline
 
 
-def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None, y_max=0, logratio=True, figsz=3.5, Ax=None):
+def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None, y_max=0, Tlab='', logratio=False, figsz=3.3, Ax=None):
 	'''
 	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
 	'''
@@ -296,10 +296,12 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 		loglab = '' ; ident_x = 1
 	mean_r = np.nanmean( ratio)
 	print( f'min and max {var1.name[0]} ratios: ', ratio.min(), ratio.max() )
+	outliers = 0
 	if xlims is not None:
 		binflag = '-fix' 
 		if (ratio.min() < xlims[0]) | (ratio.max() > xlims[1]):
 			print( f'There are some values outside the given hist xlims!')
+			outliers = len( ratio[ ratio < xlims[0]] ) + len( ratio[ ratio > xlims[1]] ) 
 	else: binflag = f'-{bins}'
 	base_rgb = np.array(mpl.colors.to_rgb(histcolor))
 	darken_factor = 0.8			# compute a slightly darker edge color automatically
@@ -307,7 +309,7 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 	style = {'edgecolor': edge_rgb, 'linewidth': 1.5, 'zorder':2}
 
 	if Ax == None:
-		ptitle =  loglab + f'{var1.name}_{var2.name} ratio' + run_name
+		ptitle =  loglab + f'{var1.name}_{var2.name} ratio' + run_name + Tlab
 		shortle = run_name[1:4] + f' {var1.name[0]} ratio' 
 		fig, ax = plt.subplots( figsize=(figsz, figsz), tight_layout=True )
 	else: ax = Ax
@@ -316,19 +318,21 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 	ax.axvline( x=ident_x, ls='--', lw=2.5, c='k', alpha=0.99)
 	ax.axvline( x=median_r, ls='-.', lw=2.5, c=edge_rgb, label=f'median = {median_r :.2f}', alpha=0.9 )	
 	# ax.axvline( x=mean_r, ls=':', lw=1.5, c=edge_rgb, label=f'mean = {mean_r :.2f}', alpha=0.7 )
-	ymax = max( hh[0].max()*1.1, y_max)
+	hymax = max( hh[0].max()*1.1, y_max)
 	ax.fill_between(x=[q16, q84] , y1=[0,0], y2= hh[0].max() + 100, step='mid', facecolor='gray', zorder=1, alpha=0.19,	
 				label='(16-84)%' + '\n' + f'$\Delta/2={ (q84 - q16)/2 :.2f}$' ) 
-	ax.set( xlabel= loglab + f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, ymax] )	# , xlim=xlims
+	ax.set( xlabel= loglab + f'{var1.name} / {var2.name}', ylabel='counts', ylim=[0, hymax] )	# , xlim=xlims
 	ax.legend()
 	ax.text( x=0.88, y=0.5, s=run_name[1:4], ha='center', va='center', transform=ax.transAxes, 
 		 color='k', fontweight='bold', bbox=dict(boxstyle='round', fc="w", ec="k"))
+	ax.text( x=0.95, y=0.6, s=Tlab,	ha='right', va='center', transform=ax.transAxes, color='gray', alpha=1.)
+	if outliers > 0: ax.text( x=0.97, y=0.4, s=f'+{outliers} outlier(s)', ha='right', va='center', transform=ax.transAxes, color=edge_rgb, size='x-small', style='italic', alpha=.8)
 	
 	if Ax==None:
 		ax.set( title=shortle)
 		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 		plt.close()
-	else: return None
+	else: return hymax
 
 
 def plot_Fv_compare( df, v_obs, k_sim, rdata='sim', Tavg=122, run_name='', analistdir='OKlist/', errors=True):
@@ -427,12 +431,11 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True, lo
 		fig, ax = plt.subplots( figsize=fs, tight_layout=True)
 	else : 
 		ax = Ax
-	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray' )			# y=x identity
+	ax.axline( xy1=(0.0001, 0.0001), slope=1, ls='--', c='gray', zorder=1 )			# y=x identity
 	if errors: 
-		scatter_with_errors( ax=ax, x= df.M_sim/100, y=M_obs, y_lo=M_obs_lo, y_up=M_obs_up, fmt='o', facecolor='tab:red', marker_alpha=0.7, markersize=5 )
-	else:	ax.scatter( x=df.M_sim/100, y=M_obs, marker='o', c='tab:red', alpha=0.7)		# observed fluxes
-	# ax.text( x=0.01, y=0.85, s= f'median accuracy: {qs[0] :1.1f}x \n$\sigma =${np.std(M_obs - df.M_sim/100) :1.1f}' + '[M$_{\odot}$]',
-	# 	ha='left', va='center', transform=ax.transAxes, color='gray', fontsize=10, alpha=0.8)
+		scatter_with_errors( ax=ax, x= df.M_sim/100, y=M_obs, y_lo=M_obs_lo, y_up=M_obs_up, fmt='o', facecolor='tab:red', marker_alpha=0.7, markersize=6 )
+	else:	ax.scatter( x=df.M_sim/100, y=M_obs, marker='o', c='tab:red', alpha=0.7, s=36)		# observed fluxes
+	# [ax.text( s=df.index[i], x=df.M_sim[i]/100,  y=df.M_obs[i], ha='left', va='bottom', fontsize=5 ) for i in range(len(df)) ]		# source IDs
 	ax.text( x=0.01, y=0.86, s= T_label,	# f'T={Tavg :1.0f} K' if simple_M else 'T=T(r)'
 		ha='left', va='center', transform=ax.transAxes, color='gray', alpha=1.)
 	ax.text( x=0.01, y=0.76, s= f'16%-84% accuracy: \n{qs[0] :1.1f}x - {qs[2] :1.1f}x',
@@ -444,11 +447,12 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True, lo
 
 	if Ax==None: 
 		ax.set( xscale='log', yscale='log') ; ax.set_title( shortle, fontsize='medium')
+		#plt.show()
 		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + (ptitle +'_'+ T_label[2:]).replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 		plt.close()
 		if not simple_M: 
 			histlims = [-2.11, 1.] if logratio else [0, 2.9]		# for fixed-x comparison
-			ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=histlims, logratio=logratio)	# fixed
+			ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=8, xlims=histlims, logratio=logratio)	# fixed
 			ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins='doane', logratio=logratio)
 			ratio_histogram( df.M_sim/100, df.M_obs, run_name, analistdir, histcolor='tab:red', bins='auto', logratio=logratio)		# swapped ratio
 	else:
@@ -535,7 +539,7 @@ def plot_inc_compare( df, run_name, analistdir, Ax=None, fs=(3,3.1)):
 		return None
 
 
-def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,3600,10800], logratio=False):
+def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,3600,10800], logratio=False, y_max=12):
 	'''
 	Create vertical triple plots of the comparison between Obs/sim quantities [radii, mass, inc].
 	'''
@@ -546,9 +550,9 @@ def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,36
 
 	for var in varnames:
 		ptitle = 'Disc ' + var 
-		fig, axs = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey=True )
-		ptitle_r = var.title() + ' ratio' 	; y_max=5
-		fig_r, axs_r = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey=True )
+		fig, axs = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey='col' )		# for scatter plots
+		ptitle_r = var.title() + ' ratio' 
+		fig_r, axs_r = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey=True )		# for ratio histograms
 
 		for i in range(len( wles)):
 			folder_wle = f'{round( wles[i])}mm/'
@@ -563,13 +567,13 @@ def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,36
 			elif var == varnames[1]:
 				histlims = [-1.5, 1.] if logratio else [0, 2.9]		# for fixed-x comparison
 				plot_mass_compare( df, run_name, 122, False, analistdir, errors=True, logratio=logratio, Ax=axs[i])
-				ratio_histogram(  df.M_sim/100, df.M_obs, run_name, analistdir, histcolor='tab:red', bins=13, xlims=histlims, y_max=y_max, logratio=logratio, Ax=axs_r[i])
+				ratio_histogram( df.M_obs,  df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=9, xlims=histlims, y_max=y_max, logratio=logratio, Ax=axs_r[i])
 			elif var == varnames[2]:
 				plot_inc_compare( df, run_name, analistdir, Ax=axs[i])
-				ratio_histogram( df.i_obs, df.i_sim/100, run_name, analistdir, histcolor='tab:orange', bins=8, xlims=[0, 90], y_max=y_max, Ax=axs_r[i])
+				ratio_histogram( df.i_obs, df.i_sim, run_name, analistdir, histcolor='tab:orange', bins=9, y_max=y_max, logratio=logratio, Ax=axs_r[i])
 			if i==0: 	
 				axs[i].set( title=ptitle) ; axs_r[i].set( title=ptitle_r )
-				if var == varnames[0]: axs[i].legend( loc='lower right')	
+				if var == varnames[0]: axs[i].legend( loc='lower right')
 		
 		if var != 'inclination': axs[i].set( xscale='log', yscale='log')
 		fig.subplots_adjust( hspace=0 ) ; fig_r.subplots_adjust( hspace=0 )
@@ -690,6 +694,36 @@ def plot_Mobs_multiwave( analistdir, conf_flag, model_comps, xsrc_flag, Texp_1mm
 	ax.scatter( m1, m3, marker='o', alpha=0.75)
 	ax.set( xlabel=r'$M_\mathrm{1mm}$  [M$_\odot$]', ylabel=r'$M_\mathrm{3mm}$  [M$_\odot$]',
 		xscale='log', yscale='log', aspect='equal', xlim=[1e-5,2e-2], ylim=[1e-5,2e-2])
+	plt.show()
+	return fig, ax
+
+
+def check_Robs_multiwave( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,3600,10800]):
+	'''
+	Plot R_obs at 3000um (3mm) vs M_obs at 890um (1mm) from their respective result folders.
+	'''
+	wle_labels = ['1mm', '3mm', '7mm']
+
+	dfs = {}
+	for wle, Texp in zip(wle_labels, Texps):
+		savedir  = savedir_prefix + wle + '/' + f'run_{Texp}s_{model_comps}_{xsrc_flag}_{conf_flag}/'
+		run_name = f'-{wle[0]}mm {Texp}s {model_comps} {conf_flag}'
+		res_path    = savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt'
+		dfs[wle] = pd.read_csv( res_path, sep='\t', index_col='source')
+
+	# align on common sources
+	common = dfs['7mm'].index.intersection( dfs['1mm'].index.intersection( dfs['3mm'].index ))
+	r1 = dfs['1mm'].loc[common, 'R_obs']
+	r3 = dfs['3mm'].loc[common, 'R_obs']
+	r7 = dfs['7mm'].loc[common, 'R_obs']
+	rarr = np.array( [r1/r1, r3/r1, r7/r1]).T
+	
+	ptitle = 'R vs $\lambda$'
+	fig, ax = plt.subplots(figsize=(5, 2.5), tight_layout=True)
+	for rr in rarr:
+		ax.plot( ['$R_\mathrm{1mm}$','$R_\mathrm{3mm}$', '$R_\mathrm{7mm}$'], rr, alpha=0.5)
+	ax.set(  ylabel=r'$R_\mathrm{obs} / R_\mathrm{1mm}$ ', title=ptitle)
+		#xscale='log', yscale='log', aspect='equal', xlim=[1e-5,2e-2], ylim=[1e-5,2e-2])
 	plt.show()
 	return fig, ax
 
@@ -872,13 +906,13 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	
 	if figures:
 		# plot_opacity()
-		plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, analistdir=analistdir )
-		plot_inc_compare( res_df, run_name, analistdir )
-		plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
-		plot_mass_compare( res_df, run_name, T_avg, False, analistdir, logratio=False)
+		#plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, analistdir=analistdir )
+		#plot_inc_compare( res_df, run_name, analistdir )
+		# plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
+		plot_mass_compare( res_df, run_name, T_avg, False, analistdir, errors=True, logratio=False)
 		# plot_mass_env( res_df, run_name, analistdir )
 		theta = alma_resolution( wle=wle, config_name=config_name)
-		plot_radius_compare( res_df, theta, run_name, analistdir, r95=r95 )
+		#plot_radius_compare( res_df, theta, run_name, analistdir, r95=r95 )
 		# thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
 		plt.close() 
 	return res_df
@@ -1383,17 +1417,16 @@ if __name__=='__main__':
 	else:
 		analist = prettylist
 		analistdir = ''
-	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_suffix )
+	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_name )
 
 	#rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
-	rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
-	#column_plotter( analistdir, conf_flag, model_comps, xsrc_flag )
-	os.chdir( savedir )
-	plot_mass_compare( rdf, run_name, Tavg=args['Tavg'], simple_M=False, analistdir=analistdir, errors=False, logratio=False, fs=(3,3.1))
+	# rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+	column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=np.array([300,3600,10800])//2 , y_max=17)
+	# os.chdir( savedir )
+	# plot_mass_compare( rdf, run_name, Tavg=args['Tavg'], simple_M=False, analistdir=analistdir, errors=False, logratio=False, fs=(3,3.1))
 	# fit_Mobs( results_dir=savedir, run_name=run_name, analistdir=analistdir, logfit=True)
 	# plot_Mobs_multiwave( analistdir, conf_flag, model_comps, xsrc_flag )
-	# # inspect_plots( two_comp=args['2c'], results_dir=savedir )
-	# # plot_correlations( rdf, run_name=run_suffix )
+
 	# collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
 	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
 	# visib_ratios_plot( model='full', quantity='mod', binsize=30e3, max_baseline=7e5, logbins=True, CC=args['compconf'], targetslist=analist)
