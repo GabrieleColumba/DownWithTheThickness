@@ -653,7 +653,7 @@ def triplot( diskname, MSname, run_name, as_margin=7., rulersize=1000, savedir='
 
 	ct = cto.table()
 	ct.open( f"{MSname.replace('.ms', '')}.image" )		# cleaned simanalyze simulation image
-	noisy_img = ct.getcol('map').squeeze().copy( order='F').T
+	noisy_img = ct.getcol('map').squeeze().copy( order='F').T * 1000				# [mJy/pix]
 	pixscale_m = np.rad2deg( abs( ct.getkeyword('coords')['direction0']['cdelt'][0]) ) * 3600		# [arcsec/pix]
 	beam_dict = ct.getkeyword('imageinfo')['restoringbeam']						# a, b and PA of beam [", ", deg]
 	bmaj = beam_dict['major']['value'] / pixscale_m 
@@ -661,7 +661,7 @@ def triplot( diskname, MSname, run_name, as_margin=7., rulersize=1000, savedir='
 	
 	config = MSname[10:].replace( '.noisy.ms', '')		# discard the first 9 letters as diskname (NN format) and the following part
 	ct.open( f'./xsrc_sub/{config}_rough.image' )		# after xsrc subtraction, in [Jy/beam]
-	xsrc_sub = ct.getcol('map').squeeze().copy( order='F').T 
+	xsrc_sub = ct.getcol('map').squeeze().copy( order='F').T * 1000		# [mJy/pix]
 	ct.close()
 
 	rms = min_bkg_rms( noisy_img )
@@ -671,8 +671,8 @@ def triplot( diskname, MSname, run_name, as_margin=7., rulersize=1000, savedir='
 		modlist[i] = crop_image( modlist[i], margins=[ pixcut_m, pixcut_m])
 
 	ptitles = ['Sky model', 'Mock observation', 'Obs - extra sources subtracted']
-	units = ['mJy/pix', 'Jy/beam', 'Jy/beam']
-	fig, axes = plt.subplots( 1,3, figsize=(12,5.5), layout='tight' ) #; axes[1,2].set_visible(False)		# hide unused axes
+	units = [r'$I_\nu$ [mJy/pix]', r'$I_\nu$ [mJy/beam]', r'$I_\nu$ [mJy/beam]']
+	fig, axes = plt.subplots( 1,3, figsize=(12,5) ) #; axes[1,2].set_visible(False)		# hide unused axes
 	axs = axes.flatten()
 	skyc = axs[0].imshow( skycut,     origin='lower', norm=mpl.colors.LogNorm(), cmap='viridis')
 	obsc = axs[1].imshow( modlist[0], origin='lower', norm=mpl.colors.LogNorm( vmin=rms, clip=True), cmap='inferno')
@@ -681,10 +681,10 @@ def triplot( diskname, MSname, run_name, as_margin=7., rulersize=1000, savedir='
 	axs[0].plot( [xc - 0.5*rls_pix, xc + 0.5*rls_pix], (yc - 0.9*pixcut )*np.array([1,1]), c='w', lw=2, alpha=.9)		# ruler patch
 	axs[0].text( xc-0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize :3.0f} au', color='w', ha='right', va='center', alpha=.8, fontsize=8) 
 	axs[0].text( xc+0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize/140 :0.2f}"', color='w', ha='left', va='center', alpha=.8, fontsize=8)
-	axs[1].text( x=0.5, y=0.05, s= f'bkg RMS={rms :1.1e} Jy/beam', ha='center', va='center', transform=axs[1].transAxes, color='gray', fontsize=8, alpha=1)
+	axs[1].text( x=0.5, y=0.05, s= f'bkg RMS={rms :1.1e} mJy/beam', ha='center', va='center', transform=axs[1].transAxes, color='w', fontsize=7, alpha=0.65)
 	
 	for i, cb in enumerate([skyc, obsc, xsrc]):
-		fig.colorbar( cb, ax=axs[i], shrink=0.58, pad=0.00, label=units[i])
+		fig.colorbar( cb, ax=axs[i], shrink=0.605, pad=0.00, label=units[i])
 		if i > 0: 		# add beam size patch
 			width_frac = bmaj / modlist[i-1].shape[1] ; height_frac = bmin / modlist[i-1].shape[0]
 			beam_patch = mpl.patches.Ellipse( (0.1, 0.1), width=width_frac, height=height_frac, angle=90 + PA, 
@@ -696,7 +696,7 @@ def triplot( diskname, MSname, run_name, as_margin=7., rulersize=1000, savedir='
 
 	#fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
-	fig.savefig( f'Triplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=400)
+	[fig.savefig( f'Triplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=400) for fig_ext in ('.png', '.pdf')]
 	plt.close()
 
 
