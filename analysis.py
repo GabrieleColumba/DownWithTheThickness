@@ -491,6 +491,7 @@ def plot_radius_compare( df, res_limit, run_name, analistdir, errors=True, r95=T
 					fmt='o', facecolor='g', label=lab_err, marker_alpha=0.6 )
 	else:
 		ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs *1 *au_to_as, marker='o', c='g', label=lab_err, alpha=0.7, zorder=3.7)		# observed radii
+	# [ ax.text( s=df.index[i], x=df.R_sim[i]*au_to_as,  y=df.R_obs[i]*au_to_as, ha='left', va='bottom', fontsize=5 ) for i in range(len(df)) ]		# source IDs
 	ax.scatter( x=df.R_sim *au_to_as, y=not_R_obs *au_to_as, marker='o', c='b', label=lab_sca, alpha=0.2)
 	ax.text( x=0.01, y=0.76, s=(f'accuracy:\n $R_{{90\%}}$: {np.nanmedian( r_ratio_90) :1.2f}x'  #\nmedian accuracy $R_{{90\%}}$: {np.mean( r_ratio_90) :1.1f}x'
 		f'\n $R_{{95\%}}$: {np.nanmedian( r_ratio_95) :1.2f}x'), ha='left', va='center', transform=ax.transAxes, color='k', fontsize='small', alpha=0.8)
@@ -539,7 +540,7 @@ def plot_inc_compare( df, run_name, analistdir, Ax=None, fs=(3,3.1)):
 		return None
 
 
-def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,3600,10800], logratio=False, y_max=12):
+def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,3600,10800], logratio=False, y_max=16):
 	'''
 	Create vertical triple plots of the comparison between Obs/sim quantities [radii, mass, inc].
 	'''
@@ -550,7 +551,7 @@ def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,36
 
 	for var in varnames:
 		ptitle = 'Disc ' + var 
-		fig, axs = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey='col' )		# for scatter plots
+		fig, axs = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey=True )		# for scatter plots
 		ptitle_r = var.title() + ' ratio' 
 		fig_r, axs_r = plt.subplots( 3,1, figsize=(2.8,8.4), sharex=True, sharey=True )		# for ratio histograms
 
@@ -567,10 +568,11 @@ def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,36
 			elif var == varnames[1]:
 				histlims = [-1.5, 1.] if logratio else [0, 2.9]		# for fixed-x comparison
 				plot_mass_compare( df, run_name, 122, False, analistdir, errors=True, logratio=logratio, Ax=axs[i])
-				ratio_histogram( df.M_obs,  df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=9, xlims=histlims, y_max=y_max, logratio=logratio, Ax=axs_r[i])
+				ratio_histogram( df.M_obs,  df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=10, xlims=histlims, y_max=y_max, logratio=logratio, Ax=axs_r[i])
 			elif var == varnames[2]:
+				histlims = [-1.5, 1.5] if logratio else [0, 5.5]
 				plot_inc_compare( df, run_name, analistdir, Ax=axs[i])
-				ratio_histogram( df.i_obs, df.i_sim, run_name, analistdir, histcolor='tab:orange', bins=9, y_max=y_max, logratio=logratio, Ax=axs_r[i])
+				ratio_histogram( df.i_obs, df.i_sim, run_name, analistdir, histcolor='tab:orange', bins=9, xlims=histlims, y_max=y_max, logratio=logratio, Ax=axs_r[i])
 			if i==0: 	
 				axs[i].set( title=ptitle) ; axs_r[i].set( title=ptitle_r )
 				if var == varnames[0]: axs[i].legend( loc='lower right')
@@ -887,13 +889,15 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 				i_sim = 180 - i_sim if i_sim > 90 else i_sim 	# all between 0 and 90 deg
 				L_tot = truths_df.loc[ disk_n ][['L_acc', 'L_int']].sum()		# L_acc + L_int [Lsun]
 				F_sim_thin = M_sim/100 * const.M_sun.cgs.value * k_sim * planck_bbody( v_obs, T=T_avg) / dist.cgs.value**2  *1e23	
+				M_star = truths_df.loc[ disk_n ]['M_star']		# [Msun]
+				age = truths_df.loc[ disk_n ]['age'] / 1000			# [kyr]
 
 				paramlist.append( [diskID, R_obs, R_sim, Ri, p_idx, M_obs_simple, M_obs, M_sim, epsilon, Menv_sim, Mcyl, 
-					LI0_d, LI0_env, F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin, M_env_o, Fv_env, Rout] )
+					LI0_d, LI0_env, F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin, M_env_o, Fv_env, Rout, M_star, age] )
 
 	res_df = pd.DataFrame( paramlist, 
 				columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'M_sim', 'epsilon_M', 'Mes', 'Mcyl',
-				'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin', 'Meo', 'Fv_env', 'Rout']
+				'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin', 'Meo', 'Fv_env', 'Rout', 'M_star', 'age']
 			).set_index('source')
 	
 	# some columns contain arrays of length 3 with uncertainties, but better to give each one an independent column of the DataFrame
@@ -907,12 +911,12 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	if figures:
 		# plot_opacity()
 		#plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, analistdir=analistdir )
-		#plot_inc_compare( res_df, run_name, analistdir )
-		# plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
+		plot_inc_compare( res_df, run_name, analistdir )
+		plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
 		plot_mass_compare( res_df, run_name, T_avg, False, analistdir, errors=True, logratio=False)
 		# plot_mass_env( res_df, run_name, analistdir )
 		theta = alma_resolution( wle=wle, config_name=config_name)
-		#plot_radius_compare( res_df, theta, run_name, analistdir, r95=r95 )
+		plot_radius_compare( res_df, theta, run_name, analistdir, r95=r95 )
 		# thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
 		plt.close() 
 	return res_df
@@ -939,31 +943,48 @@ def peak_beam_avg( image, table):
 	a = table.getkeyword('imageinfo') ['restoringbeam']['major']['value']	# Beam sma, arcsec
 	b = table.getkeyword('imageinfo') ['restoringbeam']['minor']['value']	# beam minor axis, arcsec
 	r_beam = (a + b) * .5 / pixscale		# avg beam radius, in pixels
-	peak_idx = np.unravel_index( np.argmax( crop_image(image, margins=[50,50]) ), shape=(101,101) )
-	delta_centre = np.array(peak_idx ) - [50,50]	# offsets of the photocentre
+	# print( 'average beam radius [pix]: ', r_beam, '\nbeam sma ["]: ', a )
+	peak_idx = np.unravel_index( np.argmax( crop_image(image, margins=[40,40]) ), shape=(81,81) )
+	delta_centre = np.array(peak_idx ) - [40,40]	# offsets of the photocentre
 	peak_centre = np.array( image.shape ) / 2 + np.roll( delta_centre, 1) 	# roll to put correct x and y offset in full image
-	beam_avg = np.nanmean( image[circular_region( image, r_beam, peak_centre)] )
-	return beam_avg
+	#if comp=='disc':
+	flux_disc = np.nanmean( image[ circular_region( image, 2.5*r_beam, peak_centre) ] )
+	#elif comp=='env':
+	disc_env_img = np.clip( image, a_min=0, a_max=None).copy()				# avoid negative flux
+	disc_env_img[ circular_region(disc_env_img, 2*r_beam) ] = np.nan		# nan on disc region
+	flux_env = np.nanmean( disc_env_img[ circular_region( disc_env_img, 6*r_beam, peak_centre) ] )
+	#else:
+	flux_peak = np.nanmean( image[circular_region( image, r_beam, peak_centre)] )
+	return flux_peak, flux_disc, flux_env
 
 
-def plot_SNR( df, run_name ):
+def plot_SNR( df, run_name, simple=False ):
 	ptitle = 'SNR ' + run_name[1:] 
 	fig, ax = plt.subplots( figsize=(6,4), constrained_layout=True)
-	dff = df.reset_index()
+	if simple:
+		col_list = [ 'SNR_simple', 'bkg noise (Jy/beam)'] 
+		med_SNR = [np.nanmedian( df.SNR_simple)]
+		c = ['tab:blue'] ; lab = [f'median SNR: ']
+	else:
+		col_list =[ 'SNR_disc', 'SNR_env', 'bkg noise (Jy/beam)']
+		med_SNR = np.nanmedian( df[['SNR_disc', 'SNR_env']], axis=0)
+		c = ['tab:blue', 'tab:orange'] ; lab = ['median SNR (<2.5 beam): ', 'median SNR (2-6 beam): ']
+	dff = df[ col_list ].reset_index()
 	dff.plot( xticks=dff.index, rot=90, logy=True, ax=ax, marker='o', legend=False)
 	ax.set_xticklabels( df.index)
 	# ax.axhline( y=[0.002], color='gray', ls=':')
-	ax.axhline( y=10, color='gray', ls=':')
-	ax.axhline( y=np.nanmedian( df.SNR), color='tab:blue', ls='--', alpha=0.7, label='median SNR')
+	# ax.axhline( y=10, color='gray', ls=':')
+	for i, m in enumerate( med_SNR):
+		ax.axhline( y=m, color=c[i], ls='--', alpha=0.7, label=lab[i] + f'{m :4.0f}')
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.set( title=ptitle)
-	fig.legend()
+	ax.legend()
 	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
 
-def assess_SNR( results_dir, config_name, run_name ):
+def assess_SNR( results_dir, config_name, run_name, simple=False):
 	'''
 	Evaluate the SNR of the cleaned image across the entire sample in results_dir. 
 	'''
@@ -971,26 +992,33 @@ def assess_SNR( results_dir, config_name, run_name ):
 	fitslist = sorted( glob.glob( results_dir + 'disk*') )
 	print( len(fitslist), 'files found')
 	SNRs = []
+	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[OKlist]	# load my simulation truths file
 
 	for fname in fitslist:
+		# diskID = diskname.strip('disk')		# NN_xx kind
+		# disk_n = int( diskID.strip( '_yzx') )
+		# R_sim = truths_df.loc[ disk_n ]['R_disk']
 		diskname = os.path.basename( fname )	 	# each one in a separate folder
 		img_tab = f'{results_dir}{diskname}/{diskname}.{config_name}.noisy.image'		# cleaned simanalyze image
 		table = cto.table()
 		table.open( img_tab )
 		img = table.getcol('map').squeeze().copy() 
 		peak = np.max( crop_image(img, margins=[35,35]) )	# find the peak flux in a region around the centre
-		peak_beam = peak_beam_avg( img, table=table)
+		peak_beam, sign_disc, sign_env = peak_beam_avg( img, table=table)
 		noise = min_bkg_rms( img )			# the minimum rms from bkg patches
-		# noise = rms( img )				# the rms of the entire image including target source
-		snr = peak_beam / noise
-		SNRs.append( [diskname.strip( 'disk' ), snr, peak, peak_beam, noise] )
+		full_rms = rms( img )				# the rms of the entire image including target source
+		snr_simple = peak_beam / noise
+		snr_disc = sign_disc / noise
+		snr_env = sign_env / noise
+		
+		SNRs.append( [diskname.strip( 'disk' ), snr_simple, snr_disc, snr_env, peak, peak_beam, noise, full_rms] )
 		table.close()
 
-	df = pd.DataFrame( SNRs, columns=['source', 'SNR', 'max peak', 'beam peak', 'noise']).set_index('source')
+	df = pd.DataFrame( SNRs, columns=['source', 'SNR_simple', 'SNR_disc', 'SNR_env', 'max peak', 'beam peak', 'bkg noise (Jy/beam)', 'RMS_full']).set_index('source')
 	os.chdir( results_dir )
-	df.to_csv( f'Peak-beam_SNR_{run_name}.txt', sep='\t') #, float_format='%.2e')
-	print( '\nMedian SNR of run: \t', np.nanmedian( df.SNR) )
-	plot_SNR( df, run_name)
+	df.to_csv( f'SNR_dataframe_{run_name}.txt', sep='\t') #, float_format='%.2e')
+	print( '\nMedian simple SNR of run: \t', np.nanmedian( df.SNR_simple) )
+	plot_SNR( df, run_name, simple=simple)
 
 
 def M_emp_relation( data, a, alpha, beta, gamma):
@@ -1121,8 +1149,8 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 	from scipy.interpolate import Akima1DInterpolator
 	plt.rcParams.update({ 'font.size':9, 'legend.fontsize':9, 'figure.dpi':100})	
 	mpl.style.use('fast')
-	cc_dict = { 8.9e-4: 'concat', 3e-3: 'concat', 7e-3: 'concat' }			# compact configuration for each wavelength, env-oriented
-	sc_dict = { 8.9e-4: '11.4', 3e-3: '11.7', 7e-3: '11.8' }			# compact configuration for each wavelength, env-oriented
+	cc_dict = { 8.9e-4: 'concat', 3e-3: 'concat', 7e-3: 'concat' }		# compact configuration for each wavelength, env-oriented
+	sc_dict = { 8.9e-4: '11.4', 3e-3: '11.7', 7e-3: '11.8' }			# regular configuration for each wavelength, disc-oriented
 	conf_dict = sc_dict if not CC else cc_dict
 
 	def plot_quantity( quant, uvtab):
@@ -1417,13 +1445,14 @@ if __name__=='__main__':
 	else:
 		analist = prettylist
 		analistdir = ''
-	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_name )
+	assess_SNR( results_dir=savedir, config_name=config, run_name=run_name, simple=False )
 
 	#rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
-	# rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
-	column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=np.array([300,3600,10800])//2 , y_max=17)
-	# os.chdir( savedir )
+	#rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+	# column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=np.array([300,3600,10800])//1 , y_max=17)
+	#os.chdir( savedir )
 	# plot_mass_compare( rdf, run_name, Tavg=args['Tavg'], simple_M=False, analistdir=analistdir, errors=False, logratio=False, fs=(3,3.1))
+	#plot_radius_compare( rdf, 0.00002, run_name, analistdir, False, fs=(12,12))
 	# fit_Mobs( results_dir=savedir, run_name=run_name, analistdir=analistdir, logfit=True)
 	# plot_Mobs_multiwave( analistdir, conf_flag, model_comps, xsrc_flag )
 
