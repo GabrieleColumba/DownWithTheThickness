@@ -136,7 +136,8 @@ def skymodel_ratio( diskname , folder_wles=[3000,7000], margin=None, figure=True
 		fname = data_prefix + f'{round(wle_um/1e3)}mm/' + diskname + f'_{wle_um}um.fits'
 		hdul = fits.open( fname )
 		hdul.info()
-		pixscale = hdul[0].header['CDELT1']	# deg / pix
+		pixscale = hdul[0].header['CDELT1']		# deg / pix
+		au_to_pix = au_to_as / (3600*pixscale)	# pix / au
 
 		main_beam = np.rad2deg( 1.13 * min(folder_wles) / 1e6 / 12	)		# [deg]	,  needs to be the same for both frames
 		pixcut = margin if type(margin) is not type(None) else int( main_beam / pixscale / 2 )							# margin in pixel
@@ -157,10 +158,10 @@ def skymodel_ratio( diskname , folder_wles=[3000,7000], margin=None, figure=True
 		plt.show()
 		plt.close()
 	print( '\nMedian of skymodel ratio: ', np.median( skycut_ratio) )
-	return skycut_ratio
+	return skycut_ratio, au_to_pix
 
 
-def skymodel_ratiosplot( diskname, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4)):
+def skymodel_ratiosplot( diskname, res_df, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4)):
 	'''
 	Extra figure for visualising the ratio on the skymodels of a disc seen in two projections. With a freaking well-behaving colorbar, jeez.
 	'''
@@ -173,12 +174,26 @@ def skymodel_ratiosplot( diskname, projections=['xy', 'yz'], margin=25, fs=(5.2,
 
 	for ax, p in zip(grid, projections):
 		try:
-			img = skymodel_ratio( diskname=diskname[:-2] + p, margin=margin, figure=False)
+			img, pix_au = skymodel_ratio( diskname=diskname[:-2] + p, margin=margin, figure=False)
+			diskID = diskname.strip('disk').strip('xyz') + p
+			R_sim = res_df.loc[ diskID ]['R_sim']	# [au]
+			i_sim = res_df.loc[ diskID ]['i_sim']	# [deg]
+			PA_disc = res_df.loc[ diskID ]['PA']	# [deg]
 		except:
 			print( p, 'projection not found!')
 			continue
 		im = ax.imshow( img, origin='lower', cmap='turbo_r', vmin=1.5)
 		ax.annotate( p, (0.5, 0.9), xycoords='axes fraction', ha='center', color='white', alpha=0.8)
+		width = R_sim * pix_au ; height = width * np.cos( np.deg2rad(i_sim) )
+		R_patch = mpl.patches.Ellipse( (margin, margin), width=width, height=height, angle= 90 - PA_disc  , #transform=ax.transAxes
+					fill=False, edgecolor='w', linewidth=1, ls=':', alpha=1 )
+		ax.add_patch( R_patch )
+		xc, yc = margin, margin
+		rulersize = 50 	# [au]
+		rls_pix = rulersize	* pix_au
+		ax.plot( [xc - 0.5*rls_pix, xc + 0.5*rls_pix], (yc - 0.9*margin )*np.array([1,1]), c='w', lw=1.5, alpha=.9)		# ruler patch
+		ax.text( xc-0.8*rls_pix , yc-0.9*margin, s=f'{rulersize :3.0f} au', color='w', ha='right', va='center', alpha=.8, fontsize='x-small') 
+		ax.text( xc+0.8*rls_pix , yc-0.9*margin, s=f'{rulersize/140 :0.2f}"', color='w', ha='left', va='center', alpha=.8, fontsize='x-small')
 		ax.axis('off')
 
 	grid.cbar_axes[0].colorbar( im, label=r'$\alpha_\mathrm{(3-7)mm}$')
@@ -855,6 +870,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 				Ri = np.deg2rad( pars[3] /3600)				# inner env radius	[arcsec --> rad]
 				sma = np.deg2rad( pars[2] /3600)     		# gauss disk sigma	[arcsec --> rad]
 				i_obs = pars[-4]							# disk inclination [deg]
+				disc_PA = pars[-3][0]							# disk position angle [deg]
 				p_idx = pars[5]	
 				Rout = pars[4] * Ri
 
@@ -875,7 +891,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 			except: 
 				print('No bestfit params found for disk', diskID)
 				M_obs = R_obs = F_v = i_obs = Ri = p_idx = LI0_d = LI0_env = F_v_simple = M_obs_simple = M_env_o = Fv_env = Rout = [np.nan, np.nan, np.nan]
-				F_v_thicc = Fv_count = np.nan
+				F_v_thicc = Fv_count = disc_PA = np.nan
 			
 			finally:
 				M_sim = truths_df.loc[ disk_n ]['M_disk']		# [Msun] total disk mass from simulations (gas)
@@ -892,11 +908,11 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 				M_star = truths_df.loc[ disk_n ]['M_star']		# [Msun]
 				age = truths_df.loc[ disk_n ]['age'] / 1000			# [kyr]
 
-				paramlist.append( [diskID, R_obs, R_sim, Ri, p_idx, M_obs_simple, M_obs, M_sim, epsilon, Menv_sim, Mcyl, 
+				paramlist.append( [diskID, R_obs, R_sim, Ri, p_idx, M_obs_simple, M_obs, M_sim, epsilon, Menv_sim, Mcyl, disc_PA,
 					LI0_d, LI0_env, F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin, M_env_o, Fv_env, Rout, M_star, age] )
 
 	res_df = pd.DataFrame( paramlist, 
-				columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'M_sim', 'epsilon_M', 'Mes', 'Mcyl',
+				columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'M_sim', 'epsilon_M', 'Mes', 'Mcyl', 'PA',
 				'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin', 'Meo', 'Fv_env', 'Rout', 'M_star', 'age']
 			).set_index('source')
 	
@@ -912,7 +928,7 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 		# plot_opacity()
 		#plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, analistdir=analistdir )
 		plot_inc_compare( res_df, run_name, analistdir )
-		plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
+		#plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
 		plot_mass_compare( res_df, run_name, T_avg, False, analistdir, errors=True, logratio=False)
 		# plot_mass_env( res_df, run_name, analistdir )
 		theta = alma_resolution( wle=wle, config_name=config_name)
@@ -1445,11 +1461,12 @@ if __name__=='__main__':
 	else:
 		analist = prettylist
 		analistdir = ''
-	assess_SNR( results_dir=savedir, config_name=config, run_name=run_name, simple=False )
+	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_name, simple=False )
 
 	#rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
-	#rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+	rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
 	# column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=np.array([300,3600,10800])//1 , y_max=17)
+	skymodel_ratiosplot( 'disk20_xy', rdf, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4))
 	#os.chdir( savedir )
 	# plot_mass_compare( rdf, run_name, Tavg=args['Tavg'], simple_M=False, analistdir=analistdir, errors=False, logratio=False, fs=(3,3.1))
 	#plot_radius_compare( rdf, 0.00002, run_name, analistdir, False, fs=(12,12))
