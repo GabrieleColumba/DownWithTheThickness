@@ -1,8 +1,8 @@
 # # # Full pipeline to perform mock obs + galario & MCMC fitting. 
 
-import glob
-from local_variables import *		# file with the local path pointers and cpu settings
-from visibfit_functions import *
+import glob, os
+import local_variables as loc		# file with the local path pointers and cpu settings
+import visibfit_functions as visf
 import argparse
 
 # Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples ?)	
@@ -33,8 +33,8 @@ if __name__=='__main__':
 	config_list = [config_name, cc_name] if args['compconf']==True else [config_name]
 	conf_flag = 'CC' if args['compconf']==True else 'SC'
 	folder_wle = f'{round(wle*1e3)}mm/'
-	data_path  = data_prefix + folder_wle
-	savedir = savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/'		# results directory name
+	data_path  = loc.data_prefix + folder_wle
+	savedir = loc.savedir_prefix + folder_wle + f'run_{args["Texp"]}s_{model_comps}_{xsrc_flag}_{conf_flag}/'		# results directory name
 	try: os.mkdir( savedir )
 	except FileExistsError: print('Parent run directory already existent.')
 
@@ -51,15 +51,15 @@ if __name__=='__main__':
 			else:
 				if not args["replot_only"]: 				# perform the regression from scratch
 					print( '\nRunning for: \t', diskname )
-					perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-							data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
-					mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
-							Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
+					visf.perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
+							data_folder=data_path, savedir=savedir, ptgfile=loc.ptgfile, wle=wle, config_name=config_list )
+					#visf.mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
+					#		Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
 				
 				# if os.path.exists( savedir + diskname + '/galario_sky-model_bestfit.png' ):
 				# 	pass
 				# else: 
-				bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
+				#visf.bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 
 	else:		# regress one disk per task (suited for sbatch arrays)
 		
@@ -76,16 +76,15 @@ if __name__=='__main__':
 		else:
 			print( '\nRunning for: \t', diskname )
 			if not args["replot_only"]:
-				perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
-							data_folder=data_path, savedir=savedir, ptgfile=ptgfile, wle=wle, config_name=config_list )
-				mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
-							Ncpu=Ncpu, savedir=savedir, wle=wle, config_name=config_list)
-				pass
+				visf.perform_mock_obs( fname, T_exp=args['Texp'], damp=args['damp'], monosource=args['monosrc'], nRMS=args['nRMS'],
+							data_folder=data_path, savedir=savedir, ptgfile=loc.ptgfile, wle=wle, config_name=config_list )
+				visf.mcmc_regress( diskname, nsteps=args['nsteps'], two_components=args['2c'],
+							Ncpu=loc.Ncpu, savedir=savedir, wle=wle, config_name=config_list)
 
-			# MSname = f'{diskname}.concat.noisy.ms' if args['compconf'] else f'{diskname}.{config_name}.noisy.ms'
-			# run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
-			# triplot( diskname, MSname, run_name, as_margin=10, rulersize=500, savedir=savedir)
-			bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
+			MSname = savedir + diskname + f'/{diskname}.concat.noisy.ms' if args['compconf'] else savedir + diskname + f'/{diskname}.{config_name}.noisy.ms'
+			run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
+			visf.triplot( diskname, MSname, run_name, as_margin=7, rulersize=500)
+			visf.bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 			
 			if args['compconf']:
 				print('\nCleaning up the various intermediate files !\n')
