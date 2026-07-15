@@ -83,7 +83,7 @@ if __name__=='__main__':
 
 			MSname = savedir + diskname + f'/{diskname}.concat.noisy.ms' if args['compconf'] else savedir + diskname + f'/{diskname}.{config_name}.noisy.ms'
 			run_name = f'{round(wle*1e3)}mm_' + os.path.basename( savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
-			visf.triplot( diskname, MSname, run_name, as_margin=7, rulersize=500)
+			# visf.triplot( diskname, MSname, run_name, as_margin=7, rulersize=500)
 			visf.bestfit_plots( diskname, args['Texp'], two_comp=args['2c'], nRMS=args['nRMS'], walksigma=3, wle=wle, savedir=savedir, config_name=config_list )
 			
 			if args['compconf']:

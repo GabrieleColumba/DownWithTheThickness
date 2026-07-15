@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 import os
-from local_variables import *		# file with the local path pointers and cpu settings
+import local_variables as loc		# file with the local path pointers and cpu settings
 from astropy.io import fits
 import emcee
 import corner
@@ -189,7 +189,7 @@ def copy_extra_sources( MSname, nRMS, deconvmod=True ):
 		ax.imshow( diag_img, origin='lower', norm=mpl.colors.SymLogNorm( linthresh=thresh ) )
 		ax.imshow( np.where(label_image==target_idx, 1, np.nan), origin='lower', cmap='bwr_r')			# mark the target position
 		ax.set_axis_off()
-		fig.savefig( targetpath + 'sky_xsrc_map_' + os.path.basename( MSname )[10:].replace('.ms', '') + fig_ext, bbox_inches='tight', dpi=300)
+		fig.savefig( targetpath + 'sky_xsrc_map_' + os.path.basename( MSname )[10:].replace('.ms', '') + loc.fig_ext, bbox_inches='tight', dpi=300)
 		plt.close()
 
 		return nimg_masked * factor, img_pixscale, bkg_rms	# [Jy/pix], [rad/pix], [Jy/pix]
@@ -269,7 +269,7 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp=False,
 	# state = sampler.run_mcmc( startpos, 100, progress=progbar, store=False)		# pre-run for hard burn-in
 	# new_p0 = np.quantile( state.coords,  0.50, axis=0) + 1e-2* np.random.randn( nwalkers, ndim)
 	# sampler.reset()
-	sampler.run_mcmc( startpos, nsteps, progress=progbar, store=True, thin=2)			# full production run
+	sampler.run_mcmc( startpos, nsteps, progress=loc.progbar, store=True, thin=2)			# full production run
 	return sampler
 
 
@@ -359,7 +359,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 		ax.set_ylabel( labels[i])
 		ax.yaxis.set_label_coords(-0.1, 0.5)
 	axes[-1].set_xlabel("step number")
-	fig.savefig( folder + 'chains_steps' + fig_ext, dpi=300)
+	fig.savefig( folder + 'chains_steps' + loc.fig_ext, dpi=300)
 	if figures: plt.show()
 	plt.close()
 
@@ -372,7 +372,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 		label_kwargs={'labelpad':20, 'fontsize':0}, #fontsize=8,
 		title_kwargs={"fontsize": 10, 'loc':'left'},	
 		)
-	cornfig.savefig( folder + 'corner_plot' + fig_ext, bbox_inches='tight')
+	cornfig.savefig( folder + 'corner_plot' + loc.fig_ext, bbox_inches='tight')
 	if figures: plt.show()
 	plt.close()
 
@@ -437,7 +437,7 @@ def cancel_extra_sources( skymodel, nRMS=1, figure=False, figpath='' ):
 		ax.imshow( diag_img[:, ::-1 ], origin='lower', norm=mpl.colors.LogNorm() )	# use noisy_img just for diagnostic plot
 		ax.set_axis_off()
 		# plt.show()
-		fig.savefig( figpath + 'levelled_sky' + fig_ext, bbox_inches='tight', dpi=200)
+		fig.savefig( figpath + 'levelled_sky' + loc.fig_ext, bbox_inches='tight', dpi=200)
 		plt.close()
 
 	return sky_masked
@@ -543,7 +543,7 @@ def prepare_sky_model( filename, diskname, savedir, damp, monosource, nRMS=1, wl
 	ci = ax.imshow( skycut[:, ::-1 ]*1000, origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=max(1e-4, skycut.min()*1000), vmax=None, clip=True) ) 
 	ax.set( title=ptitle, ) ; ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, shrink=0.95, pad=0.00, label=r'$I_\nu$ [mJy/pix]')
-	fig.savefig( targetpath + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
+	fig.savefig( targetpath + ptitle.replace(' ', '_') + loc.fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 	return targetpath
 
@@ -628,7 +628,7 @@ def perform_mock_obs( filename, T_exp, data_folder='', savedir='', ptgfile='', d
 					ci = ax.imshow( img.T , origin='lower', cmap='inferno', norm=mpl.colors.LogNorm( vmin=1e-6, vmax=None, clip=True) )    # transpose to have as sky model
 					ax.set( title=ptitle, ) ; ax.axis( 'off' )
 					fig.colorbar( ci, ax=ax, shrink=0.9, pad=0.00, label=r'$I_\nu$ [Jy/beam]')
-					fig.savefig( targetpath + ptitle.replace(' ', '_') + config + fig_ext , bbox_inches='tight', dpi=200)
+					fig.savefig( targetpath + ptitle.replace(' ', '_') + config + loc.fig_ext , bbox_inches='tight', dpi=200)
 					plt.close()
 					
 			if vistab_export:				# export the CASA MS to UV table suited for GALARIO
@@ -764,7 +764,7 @@ def residuals_vis_plot( MSname, model_vis, T_exp, r_robust=0.2):
 	ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, label=r'$I_\nu$ [Jy/beam]')
 	# plt.show()
-	fig.savefig( tpath + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
+	fig.savefig( tpath + ptitle.replace(' ', '_') + loc.fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
 	casa_table.open( MSname, nomodify=False )		# now the RESIDUALS
@@ -792,7 +792,7 @@ def residuals_vis_plot( MSname, model_vis, T_exp, r_robust=0.2):
 	ax.axis( 'off' )
 	fig.colorbar( ci, ax=ax, label='RMS units')
 	# # plt.show()
-	fig.savefig( tpath + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
+	fig.savefig( tpath + ptitle.replace(' ', '_') + loc.fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
 	casa_table.open( MSname, nomodify=False )
@@ -899,7 +899,7 @@ def make_uvplots( MSname, bestfit_arr, galargs, two_comp, uvbin_size=50e3, logbi
 	if Axes != None: 
 		return ax
 	else: 
-		fig.savefig( targetpath + 'uvplot_log' + fig_ext, dpi=200, bbox_inches='tight')
+		fig.savefig( targetpath + 'uvplot_log' + loc.fig_ext, dpi=200, bbox_inches='tight')
 	plt.close()
 	return bestmod_image, vis_mod
 
@@ -963,7 +963,7 @@ def pentaplot( diskname, MSname, bestfit_pars, galargs, two_comp, wle, run_name,
 	uvax = make_uvplots( MSname, bestfit_pars, galargs, two_comp, 50e3, True, wle, make_modelimg=False, save_vis=False, Axes=uvax)
 	fig.suptitle( diskname + '-' + run_name, fontweight='bold' ) 
 	# plt.show()
-	fig.savefig( tpath + f'pentaplot_{diskname}' + '-' + run_name.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300)
+	fig.savefig( tpath + f'pentaplot_{diskname}' + '-' + run_name.replace(' ', '_') + loc.fig_ext , bbox_inches='tight', dpi=300)
 	plt.close()
 
 
@@ -1030,7 +1030,7 @@ def bestfit_plots( diskname, T_exp, galargs=None, two_comp=True, sampler=None, n
 	ax.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')	# slicing to have it mirrored as casa
 	ax.set_title('galario best model')
 	ax.axis(False)
-	fig.savefig( targetpath + f'galario_sky-model_bestfit' + fig_ext, bbox_inches='tight', dpi=200)
+	fig.savefig( targetpath + f'galario_sky-model_bestfit' + loc.fig_ext, bbox_inches='tight', dpi=200)
 	plt.close()
 	return print( '\n Best-fit plots and images saved.\n')
 
@@ -1090,5 +1090,5 @@ def mcmc_regress( diskname, nsteps, two_components=True, Ncpu=None, savedir='', 
 
 	# execute the MCMC
 	sampled = mcmc_run( galargs=galargs, p0= p0_mc, p_ranges= p_rang_mc, 
-			nsteps=nsteps, nwalkers=Nwalkers, nthreads=Ncpu, backend_fname=targetpath + f'{diskname}__sampler', 
+			nsteps=nsteps, nwalkers=loc.Nwalkers, nthreads=Ncpu, backend_fname=targetpath + f'{diskname}__sampler', 
 			two_comp=two_components, append=False )
