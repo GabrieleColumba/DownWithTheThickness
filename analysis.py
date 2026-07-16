@@ -228,8 +228,8 @@ def compare_distros( df, var='i_sim', condition="M_obs / M_sim *100 < 1", bins='
 
 
 def plot_sample_props( results_dir, run_name, analistdir, bins='doane'):
-	os.chdir( results_dir )
-	df = pd.read_csv( f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+
+	df = pd.read_csv( results_dir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
 	vars = ['M_sim', 'R_sim', 'i_sim']
 	units = ['M$_\odot$', 'au', '°']
 	colors = ['tab:red', 'tab:green', 'C1']
@@ -254,10 +254,42 @@ def plot_sample_props( results_dir, run_name, analistdir, bins='doane'):
 		ax.axvline( x=mean, ls='-.', lw=2, c=edge_rgb, label=f'mean = {mean :.2f}', alpha=0.9 )	
 		ax.set( xlabel= xlab, ylabel='counts', title=ptitle )	# , xlim=xlims
 		ax.legend()
-		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_')  + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		figname = results_dir + f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_')  + fig_ext 
+		[ fig.savefig( figname, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 		# plt.show()
 		plt.close()
 	print('simulated sample properties saved to plot!\n')
+
+
+def sim_temp_plot( cmap='turbo', au_margin=110, rulersize=50, contlevels=[], discN='20'):
+	'''
+	Plot the temperature map for the disc provided by Ugo, mass averaged, integrated along a line of sight crossing the source edge-on.
+	rulersize and margin in [au]
+	'''
+	fname = f'/Users/gcolumba/PostDoc_Mac/PostProc/simulations/temperature_sink{discN}.pkl'
+	t = np.load( fname, allow_pickle=True, encoding='bytes')	# dictionary of log(T)
+	Timg = 10**t['temperature']		# linear T array
+	print('max T:', Timg.max(), 'min T:', Timg.min() )
+	
+	pixscale = 500 / 1024			# [au / pix]
+	pixcut = int( au_margin / pixscale )			# margin in pixel
+	Tcut = crop_image( Timg, margins=[ pixcut, pixcut])[:, ::-1 ]		# [K] 
+	xc, yc = np.array( Tcut.shape ) / 2
+
+	ptitle = 'Temperature map source n.' + discN	# mass-averaged, edge-on
+	fig, ax = plt.subplots( figsize=(4,4), layout='constrained')
+	cb = ax.imshow( Tcut, origin='lower', cmap=cmap, norm=mpl.colors.LogNorm(), aspect='equal', interpolation=None ) 
+	if contlevels!=[]: ax.contour( Tcut, levels=contlevels )
+	rls_pix = rulersize / pixscale 	# [au / (au/pix) = pix]
+	ax.plot( [xc - 0.5*rls_pix, xc + 0.5*rls_pix], (yc - 0.9*pixcut )*np.array([1,1]), c='w', lw=2, alpha=.9)		# ruler patch
+	ax.text( xc-0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize :3.0f} au', color='w', ha='right', va='center', alpha=.8, fontsize=8) 
+	ax.text( xc+0.8*rls_pix , yc-0.9*pixcut, s=f'{rulersize/140 :0.2f}"', color='w', ha='left', va='center', alpha=.8, fontsize=8)
+	
+	ax.set( title=ptitle, )
+	ax.axis( 'off' )
+	fig.colorbar( cb, cax= ax.inset_axes( [1,0 , 0.07, 1] ), ax=ax, label=r'$T_\mathrm{avg}$ [K]' ) 	# shrink=0.8, pad=0.00,
+	[ fig.savefig( savedir_prefix + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300) for fig_ext in ('.png', '.pdf') ]
+	plt.show()
 
 
 def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
@@ -624,9 +656,8 @@ def count_flux_sources( diskname, nRMS=5, config_name='', results_dir='' ):
 	Create a copy of CASA noisy image for the areas above noise and put everything else (including central target) to zero.
 	'''
 	import casatools as cto
-	os.chdir( results_dir + diskname )
 	table = cto.table()
-	table.open( f'{diskname}.{config_name}.noisy.image.pbcor' )		# noisy image, with pbcor the central target is slightly under corrected?
+	table.open( results_dir + diskname + f'/{diskname}.{config_name}.noisy.image.pbcor' )		# noisy image, with pbcor the central target is slightly under corrected?
 	noisy_img = table.getcol('map').squeeze().copy( order='F').T 			# copy simanalyze noisy image (convolved)  [Jy/beam]
 	beam_dict = table.getkeyword('imageinfo')['restoringbeam']	# a, b and PA of beam
 	img_pixscale = abs( table.getkeyword('coords')['direction0']['cdelt'][0])		# [rad/pix] of noisy image
@@ -857,14 +888,13 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	paramlist = []
 
 	for fpath in disklist:
-		os.chdir( fpath )
 		diskID = fpath.strip( results_dir ).strip('disk')		# NN_xx kind
 		disk_n = int(diskID.strip( '_yzx'))
 		
 		if disk_n in targetslist:
 			try:
 				# read the bestfit params from file for I0 and sma
-				pars = np.loadtxt( 'bestfit_params.txt')	# NOW each par is an array([best, 16%, 84%]) !!
+				pars = np.loadtxt( fpath + 'bestfit_params.txt')	# NOW each par is an array([best, 16%, 84%]) !!
 				LI0_d = pars[0]                   			# disk peak intensity 	Log[Jy/sr]
 				LI0_env = pars[1]							# envelope peak intensity	Log[Jy/sr]
 				Ri = np.deg2rad( pars[3] /3600)				# inner env radius	[arcsec --> rad]
@@ -920,13 +950,12 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	for col in ['R_obs', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'i_obs', 'Meo', 'Fv_env']:
 		res_df[ [col, col+'_lo',col+'_up'] ] = pd.DataFrame( res_df[col].tolist(), index=res_df.index)
 	
-	os.chdir( results_dir )
-	res_df.to_csv( f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t') #, float_format='%.2e')
-	# res_df = pd.read_csv( f'f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')	# to load it
+	res_df.to_csv( results_dir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t') #, float_format='%.2e')
+	# res_df = pd.read_csv( f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')	# to load it
 	
 	if figures:
 		# plot_opacity()
-		#plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, analistdir=analistdir )
+		#plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, results_dir=results_dir, analistdir=analistdir )
 		plot_inc_compare( res_df, run_name, analistdir )
 		#plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
 		plot_mass_compare( res_df, run_name, T_avg, False, analistdir, errors=True, logratio=False)
@@ -974,7 +1003,7 @@ def peak_beam_avg( image, table):
 	return flux_peak, flux_disc, flux_env
 
 
-def plot_SNR( df, run_name, simple=False ):
+def plot_SNR( df, run_name, results_dir,simple=False ):
 	ptitle = 'SNR ' + run_name[1:] 
 	fig, ax = plt.subplots( figsize=(6,4), constrained_layout=True)
 	if simple:
@@ -995,7 +1024,8 @@ def plot_SNR( df, run_name, simple=False ):
 	ax.grid( True, axis='x', alpha=0.5, linestyle=':')
 	ax.set( title=ptitle)
 	ax.legend()
-	[fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	figname = results_dir + f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + fig_ext
+	[fig.savefig( figname, bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	# plt.show()
 	plt.close()
 
@@ -1031,10 +1061,9 @@ def assess_SNR( results_dir, config_name, run_name, simple=False):
 		table.close()
 
 	df = pd.DataFrame( SNRs, columns=['source', 'SNR_simple', 'SNR_disc', 'SNR_env', 'max peak', 'beam peak', 'bkg noise (Jy/beam)', 'RMS_full']).set_index('source')
-	os.chdir( results_dir )
-	df.to_csv( f'SNR_dataframe_{run_name}.txt', sep='\t') #, float_format='%.2e')
+	df.to_csv( results_dir+  f'SNR_dataframe_{run_name}.txt', sep='\t') #, float_format='%.2e')
 	print( '\nMedian simple SNR of run: \t', np.nanmedian( df.SNR_simple) )
-	plot_SNR( df, run_name, simple=simple)
+	plot_SNR( df, run_name, results_dir, simple=simple)
 
 
 def M_emp_relation( data, a, alpha, beta, gamma):
@@ -1056,8 +1085,7 @@ def fit_Mobs( results_dir, run_name, analistdir, logfit=True):
 	'''
 	Regress the Mobs relation with a simple curve fit. 
 	'''
-	os.chdir( results_dir )
-	df = pd.read_csv( f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t')		# import the results dataframe
+	df = pd.read_csv( results_dir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t')		# import the results dataframe
 
 	df.drop(df[df['source'] == '29_xz'].index, inplace=True)
 	#df.dropna( inplace=True )
@@ -1098,7 +1126,7 @@ def fit_Mobs( results_dir, run_name, analistdir, logfit=True):
 		axs[i].set( xlabel=xlabs[i], xscale='log', yscale='log')
 	axs[0].set( ylabel='M_disk')
 	llab = '_log' if logfit else ''
-	[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + llab + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( results_dir + f'Figures_{fig_ext.strip(".")}/' + ptitle.replace(' ', '_') + llab + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 	return popt
 
@@ -1123,7 +1151,33 @@ def alpha_Menv_plot( model, quantity):
 	[fig.savefig( ptitle.replace(' ', '_') + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
 
 
-def median_alpha_plot( alphalist, uvd, model, quantity):
+
+def alpha_vs_Rdisc( alphalist, uvd, radii, savedir_prefix):
+	'''
+	Create a plot à la Garufi et al (2025), of the average alpha_disc vs measured disc size. 
+	'''
+	#radiil = 60 	# [au]
+	#a_limit = np.broadcast_to( klambda_to_au( uvd), shape=(len(radii), len(uvd))) < np.array( [radii]).T		# condition: within each disc size
+	uvd_au = klambda_to_au( uvd)
+	a_obs13 = alphalist[0::4]
+	a_obs37 = alphalist[1::4]
+
+	ptitle = 'Spectral index vs size' # + f' {model} '#_{quantity}'
+	fig, ax = plt.subplots( figsize=(4,3), layout='constrained')
+	for i in range(len(radii)):
+		a_limit = uvd_au < 2*radii[i]
+		a_mean13 = np.nanmean( a_obs13[i][ a_limit ] )	# average on each disc 
+		a_mean37 = np.nanmean( a_obs37[i][ a_limit ] )
+		ax.scatter( radii[i], a_mean13, c='tab:blue', )#label=r'$\alpha_{(1-3)mm}$')
+		ax.scatter( radii[i], a_mean37, c='tab:orange')#, label=r'$\alpha_{(3-7)mm}$')
+
+	ax.set( xlabel='Disc radius [au]', ylabel=r'$\alpha$ index', ylim=[None, None], xscale='linear', title=ptitle)
+	ax.legend()
+	plt.show()
+	#[fig.savefig( savedir_prefix + ptitle.replace(' ', '_') + quantity + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
+
+
+def median_alpha_plot( alphalist, uvd, model, quantity, savedir_prefix):
 	'''
 	Create a plot of the spectral indexes 1/3 and 3/7 from our mock observervations, as the median of the whole sample. 
 	'''
@@ -1151,7 +1205,7 @@ def median_alpha_plot( alphalist, uvd, model, quantity):
 	ax.legend()
 	# ax.grid( True, axis='both', alpha=0.5, linestyle=':')
 	# plt.show()
-	[fig.savefig( ptitle.replace(' ', '_') + quantity + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
+	[fig.savefig( savedir_prefix + ptitle.replace(' ', '_') + quantity + fig_ext, bbox_inches='tight', dpi=200) for fig_ext in ('.png', '.pdf') ]
 
 
 
@@ -1180,11 +1234,13 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 			return np.sqrt( uvtab.bin_im**2 + uvtab.bin_re**2 )
 		
 	# savedir_prefix =  '/Users/gcolumba/PostDoc_Mac/sshfs_dir/' 
-	os.chdir( savedir_prefix )			# save plot here
-	resdir_7mm = savedir_prefix + '7mm/run_5400s_2c_xsrc_CC/'
-	resdir_3mm = savedir_prefix + '3mm/run_1800s_2c_xsrc_CC/'
-	resdir_1mm = savedir_prefix + '1mm/run_150s_2c_xsrc_CC/'
-	disk_dirs = sorted(glob.glob( resdir_1mm + 'disk*'))
+	# resdir_7mm = savedir_prefix + '7mm/run_5400s_2c_xsrc_CC/'
+	# resdir_3mm = savedir_prefix + '3mm/run_1800s_2c_xsrc_CC/'
+	# resdir_1mm = savedir_prefix + '1mm/run_150s_2c_xsrc_CC/'
+	resdir_7mm = savedir_prefix + '7mm/run_10800s_2c_xsrc_SC/'
+	resdir_3mm = savedir_prefix + '3mm/run_3600s_2c_xsrc_SC/'
+	resdir_1mm = savedir_prefix + '1mm/run_300s_2c_xsrc_SC/'
+	disk_dirs = sorted(glob.glob( resdir_3mm + 'disk*'))
 	n_disks = len(disk_dirs)
 	ncols = 10 ; nrows = int(np.ceil( n_disks / ncols))
 	ptitle = f'Ratios of {quantity}(V) - {model} model'
@@ -1194,8 +1250,10 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 	wles = [8.9e-4, 3e-3, 7e-3] ; dirs = [resdir_1mm, resdir_3mm, resdir_7mm]
 	v_obs = 299792458.0/np.array(wles)
 
-	a_tab = [] ; ratio_book = []
+	a_tab = [] ; ratio_book = [] ; R_disc = []
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 )
+	analistdir = ''
+	rdf_1mm = pd.read_csv( resdir_1mm + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
 	for d in range( n_disks):	# n_disks
 		uvtabs = [0,0,0] ; comptabs = [0,0,0]
 		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"	
@@ -1243,6 +1301,8 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 			a37_theor = 1.52 + np.log10( planck_bbody( v_obs[1], T=T_profile) / planck_bbody( v_obs[2], T=T_profile)) / np.log10( v_obs[1] / v_obs[2] )
 			a13_theor = 1.52 + np.log10( planck_bbody( v_obs[0], T=T_profile) / planck_bbody( v_obs[1], T=T_profile)) / np.log10( v_obs[0] / v_obs[1] )
 			ratio_book.append( [a13, a37, a13_theor, a37_theor] )
+			# R_disc.append( truths_df.loc[ int( diskname[4:6]) ].R_disk )		# this one for R_sim
+			R_disc.append( rdf_1mm.loc[ diskname[4:] ].R_obs )		# this one for R_obs 1mm
 
 			# fig, axes = plt.subplots()
 			axes[d].axhline( y=2, ls=':', c='gray', alpha=0.4 )			# optically thick zone
@@ -1267,18 +1327,19 @@ def visib_ratios_plot( model='full', quantity='mod', binsize=40e3, max_baseline=
 	supylab = r'$\alpha$ index'	# 'Re(V) [Jy]'
 	fig.subplots_adjust( wspace=0.001)	# hspace=0.001,
 	fig.supylabel( supylab, weight='bold', x=0.08, fontsize=12 )
-	fig.supxlabel('uv-distance [k$\lambda$]', fontsize=12 )		#, weight='bold'
+	fig.supxlabel( 'uv-distance [k$\lambda$]', fontsize=12 )		#, weight='bold'
 	axes[0].legend( loc='lower right', bbox_transform=fig.transFigure, bbox_to_anchor=(0.9,0.1))
-	fig.savefig( ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
+	fig.savefig( savedir_prefix + ptitle.replace(' ', '_') + '.pdf' , bbox_inches='tight')
 	plt.close()
 
-	median_alpha_plot( np.reshape( ratio_book, (-1, len(uvdist3) )), uvdist3/1000, model, quantity)
-	np.savetxt( 'alpha137_env.txt', np.reshape( a_tab, (-1,4)) )			# save for M_env - alpha correlation
+	# median_alpha_plot( np.reshape( ratio_book, (-1, len(uvdist3) )), uvdist3/1000, model, quantity, savedir_prefix)
+	alpha_vs_Rdisc( np.reshape( ratio_book, (-1, len(uvdist3) )), uvdist3/1000, R_disc, savedir_prefix )
+	np.savetxt( savedir_prefix + 'alpha137_env.txt', np.reshape( a_tab, (-1,4)) )			# save for M_env - alpha correlation
 	print('Visib ratio plot saved')
 
 
 
-def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsize=50e3, logbins=True, targetslist=OKlist):
+def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsize=50e3, logbins=False, targetslist=OKlist):
 	'''
 	Make uvplots of all regressed targets in one figure
 	'''
@@ -1301,8 +1362,7 @@ def collective_uvplot( wle, results_dir, run_name, two_comp, config_name, binsiz
 		diskname = os.path.basename( disk_dirs[d] )		# "diskNN_xx"
 		if int( diskname[4:6]) in targetslist:
 			try:		# Load uvtable using uvplot
-				os.chdir( disk_dirs[d] )
-				bestfit = np.loadtxt('bestfit_params.txt')[:,0]		# only take the best values (no errors)
+				bestfit = np.loadtxt( disk_dirs[d] + 'bestfit_params.txt')[:,0]		# only take the best values (no errors)
 				inc, PA, dRA, dDec = bestfit[-4:]
 				inc *= deg ; PA *= deg ; dRA *= arcsec ; dDec *= arcsec ;		# convert to [rad] !
 				galargs = get_galargs( wle=wle, config_name=config)
@@ -1400,7 +1460,6 @@ def collective_residuals_plot( results_dir, run_name, as_margin=2, targetslist=O
 		if int( diskname[4:6]) in targetslist:
 			# print( 'reading residuals of ', diskname)
 			try:
-				# os.chdir( disk_dirs[d] )
 				res_img = np.load( disk_dirs[d] + '/bestmod/best_residuals.npy')		# Load normalised residuals
 				res_crop = crop_image( res_img, margins=[ pixcut_m, pixcut_m] )
 				cb = axes[d].imshow( res_crop.T, origin='lower', cmap='RdBu_r', norm=mpl.colors.CenteredNorm( vcenter=0), aspect='equal', interpolation=None ) 
@@ -1464,10 +1523,10 @@ if __name__=='__main__':
 	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_name, simple=False )
 
 	#rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
-	rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
+	#rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
 	# column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=np.array([300,3600,10800])//1 , y_max=17)
-	skymodel_ratiosplot( 'disk20_xy', rdf, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4))
-	#os.chdir( savedir )
+	#skymodel_ratiosplot( 'disk20_xy', rdf, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4))
+
 	# plot_mass_compare( rdf, run_name, Tavg=args['Tavg'], simple_M=False, analistdir=analistdir, errors=False, logratio=False, fs=(3,3.1))
 	#plot_radius_compare( rdf, 0.00002, run_name, analistdir, False, fs=(12,12))
 	# fit_Mobs( results_dir=savedir, run_name=run_name, analistdir=analistdir, logfit=True)
@@ -1475,7 +1534,7 @@ if __name__=='__main__':
 
 	# collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
 	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	# visib_ratios_plot( model='full', quantity='mod', binsize=30e3, max_baseline=7e5, logbins=True, CC=args['compconf'], targetslist=analist)
+	visib_ratios_plot( model='full', quantity='Re', binsize=30e3, max_baseline=1200e3, logbins=False, CC=args['compconf'], targetslist=analist)
 	# alpha_Menv_plot( model='full', quantity='mod' )
 	# plot_sample_props( savedir, run_suffix, analistdir )
 
