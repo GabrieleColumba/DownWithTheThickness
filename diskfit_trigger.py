@@ -1,29 +1,32 @@
-# # # Full pipeline to perform mock obs + galario & MCMC fitting. 
+# # # Full pipeline CLI trigger, to perform mock obs + galario & MCMC fitting. 
 
 import os, argparse
 import local_variables as loc		# file with the local path pointers and cpu settings
-import visibfit_functions as visf
+import visibfit_functions as vf
+from mockobs import perform_mock_obs
+from mcmc_regress import regress_mcmc
+from diskplots import bestfit_plots, triplot
 
 # Tung_nofit = [29, 43, 63, 72, 75, 82, 83]		# targets excluded by Tung+24 study (because multiples ?)	
 NOfit_list = [29, 52, 63, 70, 75]
 cc_dict = { 8.9e-4: 1, 3e-3: 4, 7e-3: 6 }			# compact configuration for each wavelength, env-oriented
 
 
-def main( run_meta: visf.RunParams, NOfit_list=NOfit_list ):
+def main( run_meta: vf.RunParams, NOfit_list=NOfit_list ):
 	'''
 	Main routine: run the mock observation and/or the MCMC regression for the given target(s).
 	'''
 	if run_meta.disk_N in NOfit_list:
-		return 	print('Skipping NO-FIT target: ', run_meta.diskname , '\n')
+		return print('Skipping NO-FIT target: ', run_meta.diskname , '\n')
 	
 	else:
 		print( '\nRunning for: \t', run_meta.diskname )
 		if not run_meta.replot:
-			visf.perform_mock_obs( run_meta=run_meta, ptgfile=loc.ptgfile )
-			visf.mcmc_regress( run_meta=run_meta )
+			perform_mock_obs( run_meta=run_meta, ptgfile=loc.ptgfile )
+			regress_mcmc( run_meta=run_meta )
 
-		visf.bestfit_plots( run_meta=run_meta, walksigma=3 )
-		# visf.triplot( run_meta=run_meta, as_margin=7, rulersize=500)		# one-off fig for paper
+		bestfit_plots( run_meta=run_meta, walksigma=3 )
+		# triplot( run_meta=run_meta, as_margin=7, rulersize=500)		# one-off fig for paper
 		return print( f'\nDone with {run_meta.diskname} !\n' )
 
 
@@ -44,7 +47,7 @@ if __name__=='__main__':
 	parser.add_argument('-monosrc', action='store_true', help='clip the extra sources before mock-obs (default: False)')
 	args = vars( parser.parse_args() )
 
-	meta = visf.RunParams( **args, local=loc, cc_dict=cc_dict )		# manage the run parameters
+	meta = vf.RunParams( **args, local=loc, cc_dict=cc_dict )		# manage the run parameters
 	
 	if args['diskname'] == 'all':				# run all targets sequentially
 		for fname in meta.disklist:
