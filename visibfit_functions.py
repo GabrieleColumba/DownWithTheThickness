@@ -15,37 +15,19 @@ import uvplot as uvp
 import galario.double as gd 
 from galario import deg, arcsec
 import scipy.ndimage as snd
-# from scipy.optimize import curve_fit
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.morphology import closing, footprints
-from dataclasses import dataclass
-mm3 = 0.003		# wavelength [metres]
+
 Rmax_model = 8	# [arcsec]	
 
 
-# @dataclass(frozen=True)
-# class DiskPaths:
-# 	'''Unique source for disk pointers.'''
-# 	savedir: str
-# 	diskname: str
-
-# 	@property
-# 	def targetpath( self ):
-# 		return self.savedir + self.diskname + '/'
-
-# 	def ms( self, config ):
-# 		return self.targetpath + f'{self.diskname}.{config}.noisy.ms'
-
-
-# @dataclass()
 class RunParams():
 	'''Metadata of the given run'''
 
 	def __init__(self, diskname, wle_um, Texp, config, nsteps,  nRMS, two_comp, compact_conf, monosrc, replot_only, damp,
 			local, cc_dict ):
 		self.diskname = 'unassigned'		# placeholder, it must be re-assigned by disk_visib_fit.py before main()
-		self.diskname_cmd = diskname		# diskname from command line.  [maybe useless to save?]
 		self.wle_um = int( wle_um)		 ;	self.wle = wle_um / 1e6		# [m]
 		self.Texp = int( Texp)
 		self.config = config			 ;	self.sc_name = f'alma.cycle{config}'	# main antenna config 
@@ -70,6 +52,10 @@ class RunParams():
 		self.disklist = sorted( glob.glob( self.targetnames ) )
 		self.run_name = self.folder_wle[:-1] + '_' + os.path.basename( self.savedir[:-1] ).replace('run_', '').replace('_xsrc', '')
 
+	def set_target(self, diskname, fitspath):
+		self.diskname = diskname
+		self.fitspath = fitspath
+
 	@property
 	def disk_N( self):
 		'''Get the disk number from the name'''
@@ -81,7 +67,7 @@ class RunParams():
 
 	def get_MS_path( self, config_name ):
 		'''MeasurementSet pathname for the given config_name/list. '''
-		if len([config_name]) > 1:
+		if type( config_name )==list and len(config_name) > 1:
 			MSpath = self.targetpath + f'{self.diskname}.concat.noisy.ms'		# concatenated MS
 		else:
 			if type( config_name )==list: config_name = config_name[0]				# just in case
@@ -355,7 +341,7 @@ def mcmc_run( galargs, p0, p_ranges, nsteps, nwalkers, nthreads, two_comp, backe
 
 def angle_best_median( fl_samples, ang_idx, niter=10):
 	'''
-	For angular quantities that can be cyclic (PA), check if shifting the domain endpoints finds a better best value (median).
+	For angular quantities that can be cyclic (PA), check if shifting the domain endpoints provides a better best value (median).
 	niter: Descrizione
 	'''
 	delta_shift = 180 / niter	# [deg]
@@ -429,7 +415,7 @@ def mcmc_plots( samp_bkend, labels, burn_in, walk_clip_thresh=5, figures=True, f
 	if figures: plt.show()
 	plt.close()
 
-	flat_samples = angle_best_median( flat_samples, ang_idx=[7])
+	flat_samples = angle_best_median( flat_samples, ang_idx=[-3])		# i=-3 is the PA index for both 1c and 2c runs
 
 	cornfig = plt.figure( figsize=(8,8))		# CORNER PLOT
 	fig = corner.corner(
@@ -554,6 +540,35 @@ def generate_skymodel( dRA, dDec, a, b, like_filename='disk17_xy_3000um.fits', d
 	hdr['INFOMAIN'] = (f'dRA: {dRA :.1f}  [arcsec], dDec: {dDec :.1f},  ' 
 					+ f' PA: {np.rad2deg(PA) :.1f} [deg], inc: {np.rad2deg(np.arccos(b/a)) :.1f} ')
 	fits.writeto( data_folder + 'disk03_zz_3000um.fits', data=arr, header=hdr, overwrite=True)
+
+
+def do_simanalyze( MSname, run_meta: RunParams, export_vis):
+	'''
+	Launch a CASA simanalyze task to make the clean image and export the uv table for CONCAT MS.
+	TODO: make this more general.
+	'''
+	T_exp = run_meta.Texp
+	projdir = run_meta.diskname
+	prev_cwd = os.getcwd()
+	try:
+		os.chdir( run_meta.savedir )
+		print('\n', '...simanalyzing...')  
+		ctk.simanalyze( project=projdir ,
+			vis= f'{projdir}/{os.path.basename(MSname)}', 				# simanalyze needs the relative path...
+			niter = 100,		# auto cell and imgsize values
+			threshold = f'{analytic_sensitivity(t=T_exp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
+			weighting = 'briggs', analyze=False, graphics= 'file')
+		plt.close()
+	finally:
+		print( 'simanalyze done') ;	os.chdir( prev_cwd )
+
+	if export_vis:
+		print( 'printing concat uvtab')
+		casa_table = cto.table()
+		casa_table.open( MSname ) 
+		uvp.io.export_uvtable( run_meta.targetpath + 'uvtab_Cconcat.txt', tb=casa_table, vis=MSname, datacolumn='CORRECTED_DATA') 
+		casa_table.close()
+	return
 
 
 def analytic_sensitivity( t):
@@ -803,7 +818,7 @@ def residuals_vis_plot( run_meta: RunParams, model_vis, r_robust=0.2):
 	'''
 	T_exp = run_meta.Texp
 	MSname = run_meta.get_MS_path( config_name=run_meta.config_list )
-	tpath = os.path.dirname( MSname ) + '/'
+	tpath = run_meta.targetpath
 	casa_table = cto.table()
 	casa_table.open( MSname.replace('.ms', '.image') )
 	noisy_img = casa_table.getcol('map').squeeze().copy( order='F') 	# cleaned simanalyze simulation image
@@ -1034,7 +1049,7 @@ def pentaplot( run_meta: RunParams, bestfit_pars, galargs, as_margin=3., rulersi
 		axs[i].tick_params(axis='both', left=False, top=False, right=False, bottom=False, labelleft=False, labeltop=False, labelright=False, labelbottom=False)
 
 	uvax = fig.add_axes( rect=[1.12, 0.2, 1/2.8, 0.35])		# add an axes for the uvplot
-	uvax = make_uvplots( MSname, run_meta, bestfit_pars, galargs, 50e3, True, make_modelimg=False, save_vis=False, Axes=uvax)
+	uvax = make_uvplots( run_meta, bestfit_pars, galargs, 50e3, True, make_modelimg=False, save_vis=False, Axes=uvax)
 	figtitle = run_meta.diskname + '-' + run_meta.run_name
 	fig.suptitle( figtitle, fontweight='bold' ) 
 	# plt.show()
@@ -1054,32 +1069,17 @@ def bestfit_plots( run_meta: RunParams, galargs=None, sampler=None, burnin=None,
 	labels_2c = [r'Log($I_{0d}$)', r'Log($I_{0e}$)', '$\sigma$', 'R_i', 'R_out/Ri', 'p_idx', '$i$', 'PA', 'dRA', 'dDec']
 	labs_mc = labels_2c if run_meta.two_comp else labels_gauss
 
-	MSname = run_meta.get_MS_path( config_list )
-	if os.path.exists( MSname ) and len(config_list) > 1:
-		print( 'Concat MS already existing!\n')
-	else:
+	MSname = run_meta.get_MS_path( config_list )		# "concat" or single config MS
+	if os.path.exists( MSname ):
+		print( 'MS found!\n', MSname )
+	elif run_meta.compact_conf==True and os.path.exists( MSname )==False:
 		print( '\nCreating concatenated MS, just for bestfit plots\n')
 		ctk.concat( vis=[ run_meta.get_MS_path( c ) for c in config_list], concatvis= MSname)	
-		prev_cwd = os.getcwd()
-		try:
-			os.chdir( run_meta.savedir )
-			print('\n', '...simanalyzing...')  
-			ctk.simanalyze( project=diskname ,
-				vis= f'{diskname}/{os.path.basename(MSname)}', 				# simanalyze needs the relative path...
-				niter = 100,		# auto cell and imgsize values
-				threshold = f'{analytic_sensitivity(t=run_meta.Texp) :.4f}mJy' ,	#  [25 uJy for 10', 10uJy for 1h ...]
-				weighting = 'briggs', analyze=False, graphics= 'file')
-			plt.close()
-		finally:
-			os.chdir( prev_cwd )
+		do_simanalyze( MSname=MSname, run_meta=run_meta, export_vis=True )
+	else: 
+		raise FileNotFoundError( '\nWARNING:\n' + MSname + ' not found, cannot create bestfit plots.\n\n')
 
-		print( 'printing concat uvtab')
-		casa_table = cto.table()
-		casa_table.open( MSname ) 
-		uvp.io.export_uvtable( targetpath + 'uvtab_Cconcat.txt', tb=casa_table, vis=MSname, datacolumn='CORRECTED_DATA') 
-		casa_table.close()
-
-	if sampler is None:
+	if sampler is None:				# MCMC plots
 		sampler = emcee.backends.HDFBackend( targetpath + f'{diskname}__sampler.h5', read_only=True )	# will throw store==True error if diskname is wrong
 	nsteps = sampler.get_chain().shape[0]
 	if burnin is None:
@@ -1088,7 +1088,7 @@ def bestfit_plots( run_meta: RunParams, galargs=None, sampler=None, burnin=None,
 	np.savetxt( targetpath + f'bestfit_params.txt', bestfit )		# save a (Npar, 3) table with the columns being: best value, 16p, 84p
 	# bestfit = np.loadtxt('bestfit_params.txt')
 	
-	if galargs is None:
+	if galargs is None:				# visib plots
 		config = 'concat' if len(config_list) > 1 else config_list[0]
 		galargs = get_galargs( run_meta=run_meta, config_name=config )
 	# copy_extra_sources( MSname, nRMS)
@@ -1098,7 +1098,7 @@ def bestfit_plots( run_meta: RunParams, galargs=None, sampler=None, burnin=None,
 	residuals_vis_plot( run_meta, mod_vis )
 	pentaplot( run_meta, bestfit, galargs)
 
-	# # best model visual check
+	#						# best model visual check
 	plot_img = np.clip( crop_image( model_image, margins=[500, 500]), a_min= 1e-6, a_max=None)		# [:, ::-1]
 	fig, ax = plt.subplots( figsize=(6,6))
 	ax.imshow( plot_img, origin='lower', norm=mpl.colors.LogNorm(), cmap='inferno')	# slicing to have it mirrored as casa

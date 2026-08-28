@@ -9,7 +9,7 @@ NOfit_list = [29, 52, 63, 70, 75]
 cc_dict = { 8.9e-4: 1, 3e-3: 4, 7e-3: 6 }			# compact configuration for each wavelength, env-oriented
 
 
-def main( run_meta, NOfit_list=NOfit_list ):
+def main( run_meta: visf.RunParams, NOfit_list=NOfit_list ):
 	'''
 	Main routine: run the mock observation and/or the MCMC regression for the given target(s).
 	'''
@@ -22,9 +22,8 @@ def main( run_meta, NOfit_list=NOfit_list ):
 			visf.perform_mock_obs( run_meta=run_meta, ptgfile=loc.ptgfile )
 			visf.mcmc_regress( run_meta=run_meta )
 
-		# visf.triplot( run_meta=run_meta, as_margin=7, rulersize=500)		# one-off fig for paper
 		visf.bestfit_plots( run_meta=run_meta, walksigma=3 )
-
+		# visf.triplot( run_meta=run_meta, as_margin=7, rulersize=500)		# one-off fig for paper
 		return print( f'\nDone with {run_meta.diskname} !\n' )
 
 
@@ -50,12 +49,10 @@ if __name__=='__main__':
 	if args['diskname'] == 'all':				# run all targets sequentially
 		for fname in meta.disklist:
 			diskname = os.path.basename( fname ).replace( f'_{args["wle_um"]}um', '').replace('.fits','')
-			meta.diskname = diskname		# update the diskname in the metadata
-			meta.fitspath = fname			# path of the skymodel
+			meta.set_target( diskname=diskname, fitspath=fname )		# update the diskname and fitspath (skymodel) in the metadata
 
 			main( run_meta=meta )
-
-				
+			
 	else:		# regress one disk per task (in parallel, suited for sbatch arrays)
 		try:
 			idx = int( args['diskname'] )		# if it's a number
@@ -65,11 +62,8 @@ if __name__=='__main__':
 			diskname = args['diskname']			# if it's actually like "diskNN_xx"
 			fname = meta.datadir + diskname + f'_{args["wle_um"]}um.fits'
 
-		meta.diskname = diskname		# update the diskname in the metadata
-		meta.fitspath = fname			# path of the skymodel
-
+		meta.set_target( diskname=diskname, fitspath=fname )		# update the diskname and fitspath (skymodel) in the metadata
 		main( run_meta=meta )
-
 
 
 
