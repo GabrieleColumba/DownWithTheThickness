@@ -64,7 +64,7 @@ def Plummer_envelope( R, I0, Ri, Rout, p_index ):
 
 def diskheight_correction( model_image, dxy, sigma, inc, H_r=0.4):
 	'''
-	Give thickness to galario models with a simple trick.
+	Give thickness to galario models with a simple trick. [deprecated, brings multimodality in the MCMC]
 	'''
 	# H_r = 0.35
 	H = sigma *2.1436209 * H_r			# [rad], disk height at R90

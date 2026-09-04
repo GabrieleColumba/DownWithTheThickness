@@ -2,7 +2,7 @@ import glob, os
 
 
 class RunParams:
-	'''Metadata of the given run.'''
+	'''Metadata of the given run (including the target disk and the run settings).'''
 
 	def __init__(self, diskname, wle_um, Texp, config, nsteps, nRMS, two_comp, compact_conf, monosrc, replot_only, damp,
 			local, cc_dict):
