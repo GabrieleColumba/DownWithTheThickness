@@ -74,6 +74,12 @@ def temp_profile_Tung( lum, r, T0=71):
 	#return lum**0.25 * ( r / 50 )**(-0.22) * 36   # Kelvin	(Max's fit formula)
 
 
+def alpha_index( v1, v2, T1, T2, beta=1.52):
+	'''Compute spectral index alpha, for a completely thick medium if beta==0. ''' 
+	alpha = np.log10( planck_bbody( v1, T=T1)/ planck_bbody( v2, T=T2) ) / np.log10( v1/v2 ) + beta
+	return alpha
+
+
 def temp_profile_envs( lum, r, q=0.4):
 	'''Average T(r) profile for envelopes from Maury+2019. lum=Lint+Lacc in [Lsun] and r in [au]. '''
 	return (lum/1e5)**(q/2) * ( r / 13400 )**(-q) * 60   # Kelvin
@@ -98,7 +104,7 @@ def thick_flux( v, d, r_max, l_star):
 
 
 def alma_resolution( wle, config_name):
-	'''Return the FWHM resolution [arcsec] given the lambda [m] and the config.'''
+	'''Return the FWHM resolution [arcsec] given the lambda [m] and the config. From cleaned imgs SC: 4: 0.32", 7: 0.215", 8: 0.24"  '''
 	L80_dict = {'4':369.2, '5':623.8, '6':1172.5, '7':1673.1, '8':3527.3 , '9':6482.6}	# 80 percentile baselines lenght [m]
 	C_number = config_name[-1]		# take the config number
 	theta_res = 0.574 * wle / L80_dict[ C_number ]		# [rad]
@@ -288,7 +294,7 @@ def sim_temp_plot( cmap='turbo', au_margin=110, rulersize=50, contlevels=[], dis
 	ax.set( title=ptitle, )
 	ax.axis( 'off' )
 	fig.colorbar( cb, cax= ax.inset_axes( [1,0 , 0.07, 1] ), ax=ax, label=r'$T_\mathrm{avg}$ [K]' ) 	# shrink=0.8, pad=0.00,
-	[ fig.savefig( savedir_prefix + ptitle.replace(' ', '_') + fig_ext , bbox_inches='tight', dpi=300) for fig_ext in ('.png', '.pdf') ]
+	[ fig.savefig( savedir_prefix + ptitle.replace(' ', '_').replace('.', '') + fig_ext , bbox_inches='tight', dpi=300) for fig_ext in ('.png', '.pdf') ]
 	plt.show()
 
 
@@ -330,7 +336,7 @@ def scatter_with_errors( ax, x, y, x_lo=None, x_up=None, y_lo=None, y_up=None,
 	return # markerline
 
 
-def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bins='doane', xlims=None, y_max=0, Tlab='', logratio=False, figsz=3.3, Ax=None):
+def ratio_histogram( var1, var2, run_name, savedir, analistdir, histcolor='tab:green', bins='doane', xlims=None, y_max=0, Tlab='', logratio=False, figsz=3.3, Ax=None):
 	'''
 	Plot a histogram of the ratio between var1/var2 and write the mean and std of the distribution.
 	'''
@@ -377,7 +383,7 @@ def ratio_histogram( var1, var2, run_name, analistdir, histcolor='tab:green', bi
 	
 	if Ax==None:
 		ax.set( title=shortle)
-		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		[ fig.savefig( savedir + f'Figures_{fig_ext.strip(".")}/' + analistdir + ptitle.replace(' ', '_') + binflag + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 		plt.close()
 	else: return hymax
 
@@ -460,7 +466,7 @@ def plot_mass_env( df, run_name, analistdir ):
 	plt.close()
 
 
-def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True, logratio=True, Ax=None, fs=(3,3.1)):
+def plot_mass_compare( df, run_name, Tavg, simple_M, savedir, analistdir, errors=True, logratio=True, Ax=None, fs=(3,3.1)):
 	'''
 	Compared retrieved mass from obs to simul mass of disks with either simple approx or with annular computation. 
 	'''
@@ -495,13 +501,13 @@ def plot_mass_compare( df, run_name, Tavg, simple_M, analistdir, errors=True, lo
 	if Ax==None: 
 		ax.set( xscale='log', yscale='log') ; ax.set_title( shortle, fontsize='medium')
 		#plt.show()
-		[ fig.savefig( f'Figures_{fig_ext.strip(".")}/' + analistdir + (ptitle +'_'+ T_label[2:]).replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
+		[ fig.savefig( savedir + f'Figures_{fig_ext.strip(".")}/' + analistdir + (ptitle +'_'+ T_label[2:]).replace(' ', '_') + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 		plt.close()
 		if not simple_M: 
 			histlims = [-2.11, 1.] if logratio else [0, 2.9]		# for fixed-x comparison
-			ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins=8, xlims=histlims, logratio=logratio)	# fixed
-			ratio_histogram( df.M_obs, df.M_sim/100, run_name, analistdir, histcolor='tab:red', bins='doane', logratio=logratio)
-			ratio_histogram( df.M_sim/100, df.M_obs, run_name, analistdir, histcolor='tab:red', bins='auto', logratio=logratio)		# swapped ratio
+			ratio_histogram( df.M_obs, df.M_sim/100, run_name, savedir, analistdir, histcolor='tab:red', bins=8, xlims=histlims, logratio=logratio)	# fixed
+			# ratio_histogram( df.M_obs, df.M_sim/100, run_name, savedir, analistdir, histcolor='tab:red', bins='doane', logratio=logratio)
+			ratio_histogram( df.M_sim/100, df.M_obs, run_name, savedir, analistdir, histcolor='tab:red', bins='auto', logratio=logratio)		# swapped ratio
 	else:
 		return None
 
@@ -522,7 +528,7 @@ def plot_radius_compare( df, res_limit, run_name, analistdir, errors=True, r95=T
 		lab_err = '$R_{90\%}$' ; lab_sca = '$R_{95\%}$'
 	r_ratio_90 = R_90 / df.R_sim 			# accuracy_ratio( df.R_obs, df.R_sim )
 	r_ratio_95 = R_95 / df.R_sim 
-	R_reslim = res_limit * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of R_90 radii, to compare apples with apples
+	R_reslim = res_limit / 2 # * 2.1436 / np.sqrt(8 * np.log(2))		# resolution limit in terms of radii is half the beam FWHM (R is half of diameter)
 
 	ptitle = 'Radius comparison' + run_name
 	shortle = 'Disc radius' 
@@ -530,7 +536,7 @@ def plot_radius_compare( df, res_limit, run_name, analistdir, errors=True, r95=T
 		fig, ax = plt.subplots( figsize=fs, tight_layout=True)
 	else : 
 		ax = Ax
-	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res}$' )
+	ax.fill_between( [0.01, R_reslim, 10], y1=[10, 10, R_reslim], y2=0.01, step='pre', facecolor='gray', alpha=0.16, label=r'$\theta_\mathrm{res} / 2 $' )
 	ax.axline( xy1=(0.5, 0.5), slope=1, ls='--', c='gray', alpha=0.8 )		# y=x identity
 	#ax.scatter( x=df.R_sim *au_to_as, y=df.R_obs/1.42 *au_to_as, marker='o', c='r', label='$R_{68\%}$', alpha=0.2)
 	if errors:
@@ -628,7 +634,7 @@ def column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=[300,36
 		fig.subplots_adjust( hspace=0 ) ; fig_r.subplots_adjust( hspace=0 )
 		[ fig.savefig( savedir_prefix + ptitle.replace(' ', '_')  + '-3plot' + f'_{conf_flag}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
 		[ fig_r.savefig( savedir_prefix + ptitle_r.replace(' ', '_')  + '-3plot' + f'_{conf_flag}' + fig_ext , bbox_inches='tight') for fig_ext in ('.png', '.pdf') ]
-		print( ptitle, '3-plots saved')
+		print( ptitle, '3-plots saved ! \n')
 		plt.close()
 	
 
@@ -860,16 +866,55 @@ def env_mass_annuli( v_obs, LI0, Ri, p_idx, Rmax, kappa, Ltot):
 	Mtot = dM.sum( axis=0) / const.M_sun.cgs.value * 1e-23		# [Msun]
 	return Mtot, dF_grid.sum( axis=0) 
 
-def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot ):
+
+def mass_annuli_calc( v_obs, LI0_d, sma, R_obs, kappa, Ltot, analytic_errors=False ):
 	'''
 	Compute disk mass in thin approximation but summing on annuli over the Robs, with Tung Temp profile and fitted I0_disk. Handles 3 component vectors with errors.
 	'''
-	r_grid = np.logspace(-10, np.log10(R_obs), 100)		# [rad]
-	dF_grid = np.diff( gauss_flux_integral( 10**LI0_d, sma, r_grid ), axis=0 )	# annulus-integrated flux density [Jy]
+	F_tot = gauss_flux_integral( 10**LI0_d, sma, R_obs )		# integrated fluxes
+
+	if analytic_errors and (np.ndim( R_obs) > 0): 	 			# propagate errors analytically
+		print( '\n Computing annular disc mass with analytical error propagation \n')
+		Del_I = np.array([ 10**LI0_d[1] - 10**LI0_d[0], 10**LI0_d[2] - 10**LI0_d[0] ])	# sigma- , sigma+
+		Del_s = np.array([ sma[1] - sma[0], sma[2] - sma[0] ])				
+		s = sma[0].copy()		
+		LI0 = LI0_d[0].copy()
+
+		# # propagating errors linearly, with differing sigma- and sigma+
+		# ex_0 = 0.5 * ( R_obs[0] / s )**2						# exponent of gaussian at best fit value 
+		# dF_ds = 4*np.pi* 10**LI0_d[0] * s * ( 1 - np.exp( -ex_0 ) * ( 1 + ex_0 ) )		# derivative of the flux with respect to sma
+		# dF_dI = 2*np.pi* s**2 * ( 1 - np.exp( -ex_0 ) )			# derivative of the flux with respect to I0
+		# Del_F = dF_ds * Del_s + dF_dI * Del_I					# error propagation (pessimistic linear approx), shape: (2,)
+		# eps_F = Del_F / F_tot[0] 		# relative flux error, shape: (2,)
+		# p_I, p_s = dF_dI * Del_I / Del_F, dF_ds * Del_s / Del_F		# contributions to the total error
+		
+		# # propagating relative sigmas in quadrature (averaging sigma- and sigma+)
+		# # Del_I = (10**LI0_d[2] - 10**LI0_d[1] ) / 2
+		# # Del_s = ( sma[2] - sma[1] ) / 2
+		eps_F = np.sqrt( (Del_I / 10**LI0 )**2 + (Del_s / s )**2 ) * np.array([-1, 1])
+		p_I, p_s = np.mean( Del_I / 10**LI0  / eps_F ), np.mean( Del_s / s / eps_F )		# contributions to the total error
+		
+		# print( eps_F, p_I, p_s)
+		err_arr = np.array([ 1, (1+ eps_F[0]), (1 + eps_F[1]) ])
+	
+	else: 		# use direct computation (errors or not)
+		s = sma.copy()
+		LI0 = LI0_d.copy()
+		err_arr = 1
+		# # this just to estimate error contributions, but does not add up
+		Del_FI = np.diff( gauss_flux_integral( 10**LI0_d, sma[0], R_obs )[1:] )
+		Del_Fs = np.diff( gauss_flux_integral( 10**LI0_d[0], sma, R_obs )[1:] )
+		Del_F = np.diff( F_tot[1:])			# full delta between sigma+ case - sigma- case
+		p_I, p_s = Del_FI / Del_F, Del_Fs / Del_F		# contributions to the total error
+
+	#r_grid = np.logspace(-10, np.log10(R_obs), 200)	# [rad]
+	r_grid = np.linspace( 1e-15 , R_obs, 200)			# [rad]		# Rout does change some percents of final mass
+	dF_grid = np.diff( gauss_flux_integral( 10**LI0, s, r_grid ), axis=0 )	# annulus-integrated flux density [Jy]
 	rmid = ( r_grid[:-1] + r_grid[1:] ) / 2 * dist.to_value(u.au)	# midpoint radii [au]
 	dM = ( dist.cgs.value )**2 / kappa * dF_grid  / planck_bbody( v_obs, T=temp_profile_Tung( lum=Ltot, r=rmid ) )
-	Mtot = dM.sum( axis=0 ) / const.M_sun.cgs.value * 1e-23		# [Msun]
-	return Mtot, dF_grid.sum( axis=0) 
+	Mtot = dM.sum( axis=0 ) / const.M_sun.cgs.value * 1e-23	* err_arr	# [Msun]
+
+	return Mtot, dF_grid.sum( axis=0), p_I, p_s
 
 
 def main_analysis( targetslist, wle, results_dir, config_name, run_name, analistdir, T_avg=122, r95=True, figures=True):
@@ -885,16 +930,16 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	disklist = sorted( glob.glob( results_dir + 'disk*') )
 	print( len(disklist), 'files found in ', results_dir)
 	truths_df = pd.read_csv( truth_path, sep='\t', index_col=0 ) #.loc[OKlist]	# load my simulation truths file
-	paramlist = []
+	paramlist = []; p_I =[]; p_s = []
 
 	for fpath in disklist:
-		diskID = fpath.strip( results_dir ).strip('disk')		# NN_xx kind
+		diskID = os.path.basename( fpath ).replace('disk','')		# NN_xx kind
 		disk_n = int(diskID.strip( '_yzx'))
 		
 		if disk_n in targetslist:
 			try:
 				# read the bestfit params from file for I0 and sma
-				pars = np.loadtxt( fpath + 'bestfit_params.txt')	# NOW each par is an array([best, 16%, 84%]) !!
+				pars = np.loadtxt( fpath + '/bestfit_params.txt')	# NOW each par is an array([best, 16%, 84%]) !!
 				LI0_d = pars[0]                   			# disk peak intensity 	Log[Jy/sr]
 				LI0_env = pars[1]							# envelope peak intensity	Log[Jy/sr]
 				Ri = np.deg2rad( pars[3] /3600)				# inner env radius	[arcsec --> rad]
@@ -912,7 +957,8 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 
 				F_v_simple = gauss_flux_integral( 10**LI0_d, sma, 1*R_obs)      # observed flux density of DISK [Jy]
 				M_obs_simple = F_v_simple *1e-23 * ( dist.cgs.value )**2 / (k_obs * planck_bbody( v_obs, T_avg) )  / const.M_sun.cgs.value	# [Msun] 
-				M_obs, F_v = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)				
+				M_obs, F_v, pI, ps = mass_annuli_calc( v_obs, LI0_d, sma, R_obs, k_obs, l_star)		
+				p_I.append( pI ) ; p_s.append( ps )
 				Fv_count = np.nan #count_flux_sources( 'disk'+ diskID, nRMS=7, config_name=config_name, results_dir=results_dir ) 
 				F_v_thicc = thick_flux( v_obs, dist, R_obs[0], l_star=l_star)			# theoretical fully thick disk flux
 
@@ -941,13 +987,15 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 				paramlist.append( [diskID, R_obs, R_sim, Ri, p_idx, M_obs_simple, M_obs, M_sim, epsilon, Menv_sim, Mcyl, disc_PA,
 					LI0_d, LI0_env, F_v, F_v_simple, Fv_count, F_v_thicc, i_obs, i_sim, L_tot, F_sim_thin, M_env_o, Fv_env, Rout, M_star, age] )
 
+	if len(R_obs) > 1: print( 'mean delta flux from I0 and sigma: \n', f'{np.mean( p_I) :.2f}', f'{np.mean( p_s) :.2f}' )
+
 	res_df = pd.DataFrame( paramlist, 
 				columns=['source', 'R_obs', 'R_sim', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'M_sim', 'epsilon_M', 'Mes', 'Mcyl', 'PA',
 				'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'Fv_count', 'F_thick', 'i_obs', 'i_sim', 'L_tot', 'Fsim_thin', 'Meo', 'Fv_env', 'Rout', 'M_star', 'age']
 			).set_index('source')
 	
 	# some columns contain arrays of length 3 with uncertainties, but better to give each one an independent column of the DataFrame
-	for col in ['R_obs', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'i_obs', 'Meo', 'Fv_env']:
+	for col in ['R_obs', 'Ri', 'p_idx', 'M_obs_simple', 'M_obs', 'LI0_d', 'LI0_env', 'F_obs', 'Fv_simple', 'i_obs', 'Meo', 'Fv_env']: 
 		res_df[ [col, col+'_lo',col+'_up'] ] = pd.DataFrame( res_df[col].tolist(), index=res_df.index)
 	
 	res_df.to_csv( results_dir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t') #, float_format='%.2e')
@@ -956,12 +1004,12 @@ def main_analysis( targetslist, wle, results_dir, config_name, run_name, analist
 	if figures:
 		# plot_opacity()
 		#plot_Fv_compare( res_df, v_obs, k_sim, Tavg=T_avg, rdata='sim', run_name=run_name, results_dir=results_dir, analistdir=analistdir )
-		plot_inc_compare( res_df, run_name, analistdir )
+		# plot_inc_compare( res_df, run_name, analistdir )
 		#plot_mass_compare( res_df, run_name, T_avg, True, analistdir )
-		plot_mass_compare( res_df, run_name, T_avg, False, analistdir, errors=True, logratio=False)
+		plot_mass_compare( res_df, run_name, T_avg, False, results_dir, analistdir, errors=True, logratio=False)
 		# plot_mass_env( res_df, run_name, analistdir )
 		theta = alma_resolution( wle=wle, config_name=config_name)
-		plot_radius_compare( res_df, theta, run_name, analistdir, r95=r95 )
+		# plot_radius_compare( res_df, theta, run_name, analistdir, r95=r95 )
 		# thick_sim_inspo( truths_df, k_sim, T_avg, v_obs, run_name)
 		plt.close() 
 	return res_df
@@ -1522,9 +1570,9 @@ if __name__=='__main__':
 		analistdir = ''
 	#assess_SNR( results_dir=savedir, config_name=config, run_name=run_name, simple=False )
 
-	#rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
+	rdf = main_analysis( analist, wle, savedir, config_name, run_name, analistdir, T_avg=args['Tavg'], r95=not(args['r90']), figures=True )
 	#rdf = pd.read_csv( savedir + f'analysis_results{run_name.replace(" ","_")}-{analistdir}'[:-1] + '.txt', sep='\t', index_col='source')
-	# column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=np.array([300,3600,10800])//1 , y_max=17)
+	#column_plotter( analistdir, conf_flag, model_comps, xsrc_flag, Texps=np.array([300,3600,10800])//1 , y_max=17)
 	#skymodel_ratiosplot( 'disk20_xy', rdf, projections=['xy', 'yz'], margin=25, fs=(5.2,2.4))
 
 	# plot_mass_compare( rdf, run_name, Tavg=args['Tavg'], simple_M=False, analistdir=analistdir, errors=False, logratio=False, fs=(3,3.1))
@@ -1534,7 +1582,7 @@ if __name__=='__main__':
 
 	# collective_uvplot( wle, results_dir=savedir, run_name=run_suffix, two_comp=args['2c'], config_name=config, logbins=True)
 	# collective_residuals_plot( results_dir=savedir, run_name=run_suffix )
-	visib_ratios_plot( model='full', quantity='Re', binsize=30e3, max_baseline=1200e3, logbins=False, CC=args['compconf'], targetslist=analist)
+	# visib_ratios_plot( model='full', quantity='Re', binsize=30e3, max_baseline=1200e3, logbins=False, CC=args['compconf'], targetslist=analist)
 	# alpha_Menv_plot( model='full', quantity='mod' )
 	# plot_sample_props( savedir, run_suffix, analistdir )
 
