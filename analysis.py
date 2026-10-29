@@ -857,6 +857,42 @@ def OLD_produce_truths_df():
 	dfT.to_csv( 'Tungs_truths.dat', sep='\t')		# saving it to file for reuse
 
 
+def print_truths_table( IDs=prettylist):
+	'''
+	Produce table with truth values for paper, latex format.
+	'''
+	path = "/Users/gcolumba/PostDoc_Mac/PostProc/Scripts/DownWithTheThickness/Tungs_truths.dat"
+	df = pd.read_csv( path, sep="\t", index_col=0).loc[IDs]
+
+	def fold(i):
+		return 180 - i if i > 90 else i
+
+	header = [r"ID", r"age [kyr]", r"$L_{\rm int+acc}$ [$L_\odot$]", r"$M_\star$ [$M_\odot$]",
+			r"$M_{\rm disc}$ [$M_\odot$]", r"$M_{\rm env}$ [$M_\odot$]", r"$R_{\rm disc}$ [au]",
+			r"$i_{xy}$ [°]", r"$i_{xz}$ [°]", r"$i_{yz}$ [°]"]
+	lines = [r"\begin{tabular}{" + "c" * len(header) + "}",
+			r"\toprule",
+			" & ".join(header) + r" \\",
+			r"\midrule"]
+
+	for id_, r in df.iterrows():
+		row = [f"{id_}",
+			f"{r['age'] / 1000 :.1f}",
+			f"{r['L_int'] + r['L_acc'] :.1f}",
+			f"{r['M_star'] :.3f}",
+			f"{r['M_disk'] :.1e}",
+			f"{r['M_env'] :.3f}",
+			f"{r['R_disk'] :.1f}",
+			f"{fold(r['i_xy']) :.1f}",
+			f"{fold(r['i_xz']) :.1f}",
+			f"{fold(r['i_yz']) :.1f}"]
+		lines.append("   &   ".join(row) + r" \\")
+
+	lines += [r"\bottomrule", r"\end{tabular}"]
+	print("\n".join(lines))
+	return 
+
+
 def env_mass_annuli( v_obs, LI0, Ri, p_idx, Rmax, kappa, Ltot):
 	'''Compute envelope mass in thin approximation but summing on annuli up to Rmax, with Tung Temp profile and fitted I0_env.'''
 	r_grid = np.logspace( -10, np.log10(Rmax), 400)		# [rad]
